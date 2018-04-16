@@ -1,0 +1,136 @@
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.autograd import Variable
+from torch.nn import functional as F
+from torch.nn import init
+
+
+# Referred this implementation
+# https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/0ae4f0500e415a6a67689ef9356e8e4779ae5833/models/networks.py
+
+def weights_init_normal(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        init.normal(m.weight.data, 0.0, 0.2)
+    elif classname.find('Linear') != -1:
+        init.normal(m.weight.data, 0.0, 0.2)
+    elif classname.find('BatchNorm2d') != -1:
+        init.normal(m.weight.data, 1.0, 0.02)
+        init.constant(m.bias.data, 0.0)
+
+
+def weights_init_kaiming(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        init.kaiming_normal(m.weight.data, a=0, mode='fan_in')
+    elif classname.find('Linear') != -1:
+        init.kaiming_normal(m.weight.data, a=0, mode='fan_in')
+    elif classname.find('BatchNorm2d') != -1:
+        init.normal(m.weight.data, 1.0, 0.02)
+        init.constant(m.bias.data, 0.0)
+
+
+# This is used in various previous baselines
+# Domain-Adversarial Training of Neural Networks [JMLR2016]
+# Domain separation networks [NIPS2016]
+# Unsupervised Pixel-Level Domain Adaptation with Generative Adversarial Networks [CVPR2017]
+class Classifier(nn.Module):
+    def __init__(self, n_class, n_ch, res):
+        super(Classifier, self).__init__()
+        self.use_source_extractor = False
+        self.conv1 = nn.Conv2d(n_ch, 32, 5)
+        self.conv2 = nn.Conv2d(32, 48, 5)
+        self.fc_input_len = (((res - 4) // 2 - 4) // 2) ** 2 * 48
+        self.fc1 = nn.Linear(self.fc_input_len, 100)
+        self.fc2 = nn.Linear(100, 100)
+        self.fc3 = nn.Linear(100, n_class)
+
+    def __call__(self, x):
+        h = F.max_pool2d(F.relu(self.conv1(x)), 2, stride=2)
+        h = F.max_pool2d(F.relu(self.conv2(h)), 2, stride=2)
+        h = F.relu(self.fc1(h.view(-1, self.fc_input_len)))
+        h = F.relu(self.fc2(h))
+        return self.fc3(h)
+
+
+class GenResBlock(nn.Module):
+    def __init__(self, n_out_ch):
+        super(GenResBlock, self).__init__()
+        self.conv1 = nn.Conv2d(n_out_ch, n_out_ch, 3, padding=1)
+        self.conv2 = nn.Conv2d(n_out_ch, n_out_ch, 3, padding=1)
+
+        self.bn1 = nn.BatchNorm2d(n_out_ch)
+        self.bn2 = nn.BatchNorm2d(n_out_ch)
+
+    def __call__(self, x):
+        h = F.relu(self.bn1(self.conv1(x)))
+        return x + self.bn2(self.conv2(h))
+
+
+class Generator(nn.Module):
+    def __init__(self, n_hidden, n_resblock, n_ch, res, n_color):
+        super(Generator, self).__init__()
+        self.n_resblock = n_resblock
+        self.n_hidden = n_hidden
+        self.res = res
+        self.fc = nn.Linear(n_hidden, self.res * self.res)
+        self.conv1 = nn.Conv2d(1 + n_color, n_ch, 3, padding=1)
+        self.bn1 = nn.BatchNorm2d(n_ch)
+
+        for i in range(1, self.n_resblock + 1):
+            setattr(self, 'block{:d}'.format(i), GenResBlock(n_ch))
+        self.conv2 = nn.Conv2d(n_ch, n_color, 3, padding=1)
+
+    def gen_noise(self, batchsize):
+        return torch.randn(batchsize, self.n_hidden)  # z_{i} ~ N(0, 1)
+
+    def __call__(self, x):
+        z = Variable(self.gen_noise(x.data.shape[0]).cuda())
+        h = torch.cat(
+            (x, F.relu(self.fc(z)).view(-1, 1, self.res, self.res)),
+            dim=1)
+        h = F.relu(self.bn1(self.conv1(h)))
+        for i in range(1, self.n_resblock + 1):
+            h = getattr(self, 'block{:d}'.format(i))(h)
+        return F.tanh(self.conv2(h))
+
+
+def add_noise(h, sigma):
+    return h + Variable(sigma * torch.randn(*h.shape).cuda())
+
+
+class DisBlock(nn.Module):
+    def __init__(self, n_in_ch, n_out_ch, slope=0.2, stride=2, padding=1):
+        super(DisBlock, self).__init__()
+        self.slope = slope
+        self.conv = nn.Conv2d(n_in_ch, n_out_ch, 3,
+                              stride=stride, padding=padding)
+        self.bn = nn.BatchNorm2d(n_out_ch)
+
+    def __call__(self, x):
+        return F.leaky_relu(self.bn(self.conv(x)), self.slope)
+
+
+class Discriminator(nn.Module):
+    def __init__(self, n_ch, res, n_color):
+        super(Discriminator, self).__init__()
+        self.slope = 0.2
+        self.res = res
+        self.len_block = int(np.log2(res)) - 2  # 32 -> 3, 28 -> 2
+
+        self.conv1 = nn.Conv2d(n_color, n_ch, 3, stride=2, padding=1)
+        for i in range(self.len_block):
+            setattr(self, 'block{:d}'.format(i + 1),
+                    DisBlock(64 * (2 ** i), 64 * (2 ** (i + 1))))
+        self.conv2 = nn.Conv2d(64 * (2 ** self.len_block), 1, 3, stride=1,
+                               padding=1)
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+
+    def __call__(self, x):
+        # Don't normalize first conv-relu result!
+        h = F.leaky_relu(self.conv1(x), self.slope)
+        for i in range(0, self.len_block):
+            h = getattr(self, 'block{:d}'.format(i + 1))(h)
+        h = self.avg_pool(self.conv2(h))
+        return h.view(-1, 1)
