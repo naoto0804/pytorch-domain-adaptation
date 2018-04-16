@@ -117,7 +117,7 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.slope = 0.2
         self.res = res
-        self.len_block = int(np.log2(res)) - 2  # 32 -> 3, 28 -> 2
+        self.len_block = int(np.log2(res)) - 3  # 32 -> 3, 28 -> 2
 
         self.conv1 = nn.Conv2d(n_color, n_ch, 3, stride=2, padding=1)
         for i in range(self.len_block):
