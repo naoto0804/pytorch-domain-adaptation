@@ -2,7 +2,7 @@
 
 This is an unofficial pytorch implementation of a paper, From source to target and back: symmetric bi-directional adaptive GAN [Russo+, CVPR2018].
 
-Please note that this is an ongoing project and I cannot fully reproduce the results in MNIST <-> SVHN currently.
+Please note that this is an ongoing project and I cannot fully reproduce the results currently.
 
 
 ## Requirements
