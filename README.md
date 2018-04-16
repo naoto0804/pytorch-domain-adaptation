@@ -1,4 +1,4 @@
-# pytorch-AdaIN
+# pytorch-SBADA-GAN
 
 This is an unofficial pytorch implementation of a paper, From source to target and back: symmetric bi-directional adaptive GAN [Russo+, CVPR2018].
 
