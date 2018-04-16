@@ -46,7 +46,7 @@ def experiment(exp, seed):
     data_tgt.test_X = norm_cls_to_gan(data_tgt.test_X)
 
     target_train_ds = data_source.ArrayDataSource(
-        [data_src.train_X, data_src.train_y])
+        [data_tgt.train_X, data_tgt.train_y])
     target_test_ds = data_source.ArrayDataSource(
         [data_tgt.test_X, data_tgt.test_y])
     niter = 0

@@ -117,20 +117,20 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.slope = 0.2
         self.res = res
-        self.len_block = int(np.log2(res)) - 3  # 32 -> 3, 28 -> 2
+        self.len_block = int(np.log2(res)) - 3  # 32 -> 2, 28 -> 1
 
         self.conv1 = nn.Conv2d(n_color, n_ch, 3, stride=2, padding=1)
         for i in range(self.len_block):
             setattr(self, 'block{:d}'.format(i + 1),
-                    DisBlock(64 * (2 ** i), 64 * (2 ** (i + 1))))
-        self.conv2 = nn.Conv2d(64 * (2 ** self.len_block), 1, 3, stride=1,
+                    DisBlock(n_ch * (2 ** i), n_ch * (2 ** (i + 1))))
+        self.conv2 = nn.Conv2d(n_ch * (2 ** self.len_block), 1, 3, stride=1,
                                padding=1)
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
 
     def __call__(self, x):
         # Don't normalize first conv-relu result!
         h = F.leaky_relu(self.conv1(x), self.slope)
-        for i in range(0, self.len_block):
+        for i in range(self.len_block):
             h = getattr(self, 'block{:d}'.format(i + 1))(h)
         h = self.avg_pool(self.conv2(h))
         return h.view(-1, 1)
