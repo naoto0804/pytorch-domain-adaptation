@@ -23,7 +23,8 @@ torch.backends.cudnn.benchmark = True
 @click.option('--seed', type=int, default=0,
               help='random seed (0 for time-based)')
 def experiment(exp, seed):
-    os.makedirs('log/{:s}/sup'.format(exp), exist_ok=True)
+    log_dir = 'log/{:s}/sup'.format(exp)
+    os.makedirs(log_dir, exist_ok=True)
 
     data_src, data_tgt = load_source_target_datasets(exp)
     del data_src
@@ -82,8 +83,8 @@ def experiment(exp, seed):
         fmt = '*** Epoch {} TGT TEST err={:.3%}'
         print(fmt.format(epoch, tgt_test_err))
 
-        if epoch % 100 == 0 and epoch > 0:
-            save_model(cls, 'log/{:s}/sup/epoch{:d}.tar'.format(exp, epoch))
+        if (epoch + 1) % 100 == 0 and epoch > 0:
+            save_model(cls, '{:s}/epoch{:d}.tar'.format(log_dir, epoch + 1))
 
 
 if __name__ == '__main__':
