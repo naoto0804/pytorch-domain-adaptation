@@ -109,7 +109,7 @@ def experiment(exp, seed, modelname):
             ds.batch_iterator(batch_size=params['batch_size'],
                               shuffle=rng):
         niter += 1
-        if niter == params['num_epochs'] // 2 * iter_per_epoch:
+        if niter >= params['num_epochs'] // 2 * iter_per_epoch:
             eta = params['weight']['eta']
 
         src_X = Variable(torch.from_numpy(src_X).cuda())
@@ -192,7 +192,7 @@ def experiment(exp, seed, modelname):
             cls_s.train()
             cls_t.train()
 
-            if epoch % 50 == 0:
+            if epoch % 10 == 0:
                 data = []
                 for x in [src_X, fake_tgt_X, fake_back_src_X]:
                     x = x.data.cpu()
@@ -202,12 +202,13 @@ def experiment(exp, seed, modelname):
                 grid = make_grid(torch.cat(tuple(data), dim=0),
                                  normalize=True, range=(-1.0, 1.0))
                 writer.add_image('generated', grid, epoch)
+
+            if epoch % 50 == 0:
                 models_dict = {
                     'cls_s': cls_s, 'cls_t': cls_t, 'dis_s': dis_s,
                     'dis_t': dis_t, 'gen_s_t': gen_s_t, 'gen_t_s': gen_t_s}
                 filename = '{:s}/epoch{:d}.tar'.format(log_dir, epoch)
                 save_models_dict(models_dict, filename)
-                print('finish saving')
 
 
 if __name__ == '__main__':

@@ -13,6 +13,8 @@ def load_model(model, filename):
 
 
 def save_models_dict(models_dict, filename):
+    # key: name of model, value: model
+    assert isinstance(models_dict, dict)
     result = {}
     for name, model in models_dict.items():
         state_dict = model.state_dict()
@@ -23,6 +25,8 @@ def save_models_dict(models_dict, filename):
 
 
 def load_models_dict(models_dict, filename):
+    # key: name of model, value: uninitialized model
+    assert isinstance(models_dict, dict)
     result_dict = torch.load(filename)
     for key in models_dict.keys():
         models_dict[key].load_state_dict(result_dict[key])
