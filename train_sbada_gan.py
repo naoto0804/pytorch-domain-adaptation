@@ -17,7 +17,7 @@ from loss import GANLoss
 from net import Generator, Discriminator, weights_init_normal, \
     Classifier, weights_init_kaiming
 from opt import params, exp_list
-from util import ImagePool, norm_cls_to_gan, save_model, load_model
+from util import ImagePool, norm_cls_to_gan, load_model, save_models_dict
 
 torch.backends.cudnn.benchmark = True
 
@@ -54,15 +54,15 @@ def experiment(exp, seed, modelname):
         cls_s.apply(weights_init_kaiming)
         cls_t.apply(weights_init_kaiming)
 
-    gen_s_t_params = {**{'res': res, 'n_c_in': n_c_src, 'n_c_out': n_c_tgt}}
-    gen_t_s_params = {**{'res': res, 'n_c_in': n_c_tgt, 'n_c_out': n_c_src}}
+    gen_s_t_params = {'res': res, 'n_c_in': n_c_src, 'n_c_out': n_c_tgt}
+    gen_t_s_params = {'res': res, 'n_c_in': n_c_tgt, 'n_c_out': n_c_src}
     gen_s_t = Generator(**{**params['gen_init'], **gen_s_t_params}).cuda()
     gen_t_s = Generator(**{**params['gen_init'], **gen_t_s_params}).cuda()
     gen_s_t.apply(weights_init_normal)
     gen_t_s.apply(weights_init_normal)
 
-    dis_s_params = {**{'res': res, 'n_c_in': n_c_src}}
-    dis_t_params = {**{'res': res, 'n_c_in': n_c_tgt}}
+    dis_s_params = {'res': res, 'n_c_in': n_c_src}
+    dis_t_params = {'res': res, 'n_c_in': n_c_tgt}
     dis_s = Discriminator(**{**params['dis_init'], **dis_s_params}).cuda()
     dis_t = Discriminator(**{**params['dis_init'], **dis_t_params}).cuda()
     dis_s.apply(weights_init_normal)
@@ -192,7 +192,7 @@ def experiment(exp, seed, modelname):
             cls_s.train()
             cls_t.train()
 
-            if epoch % 5 == 0:
+            if epoch % 50 == 0:
                 data = []
                 for x in [src_X, fake_tgt_X, fake_back_src_X]:
                     x = x.data.cpu()
@@ -202,8 +202,12 @@ def experiment(exp, seed, modelname):
                 grid = make_grid(torch.cat(tuple(data), dim=0),
                                  normalize=True, range=(-1.0, 1.0))
                 writer.add_image('generated', grid, epoch)
-                save_model(gen_s_t,
-                           '{:s}/epoch{:d}.tar'.format(log_dir, epoch))
+                models_dict = {
+                    'cls_s': cls_s, 'cls_t': cls_t, 'dis_s': dis_s,
+                    'dis_t': dis_t, 'gen_s_t': gen_s_t, 'gen_t_s': gen_t_s}
+                filename = '{:s}/epoch{:d}.tar'.format(log_dir, epoch)
+                save_models_dict(models_dict, filename)
+                print('finish saving')
 
 
 if __name__ == '__main__':
