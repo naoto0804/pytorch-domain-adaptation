@@ -534,22 +534,12 @@ def load_gtsrb(zero_centre=False, greyscale=False, val=False):
 def load_source_target_datasets(exp):
     if exp == 'svhn_mnist':
         d_source = load_svhn(zero_centre=False,
-                             greyscale=True)
-        d_target = load_mnist(invert=False, zero_centre=False,
-                              pad32=True, val=False)
-    elif exp == 'mnist_svhn':
-        d_source = load_mnist(invert=False, zero_centre=False,
-                              pad32=True)
-        d_target = load_svhn(zero_centre=False,
-                             greyscale=True, val=False)
-    elif exp == 'svhn_mnist_rgb':
-        d_source = load_svhn(zero_centre=False,
                              greyscale=False)
         d_target = load_mnist(invert=False, zero_centre=False,
-                              pad32=True, val=False, rgb=True)
-    elif exp == 'mnist_svhn_rgb':
+                              pad32=True, val=False, rgb=False)
+    elif exp == 'mnist_svhn':
         d_source = load_mnist(invert=False, zero_centre=False,
-                              pad32=True, rgb=True)
+                              pad32=True, rgb=False)
         d_target = load_svhn(zero_centre=False,
                              greyscale=False, val=False)
     elif exp == 'cifar_stl':

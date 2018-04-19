@@ -69,18 +69,18 @@ class GenResBlock(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, n_hidden, n_resblock, n_ch, res, n_color):
+    def __init__(self, n_hidden, n_resblock, n_ch, res, n_c_in, n_c_out):
         super(Generator, self).__init__()
         self.n_resblock = n_resblock
         self.n_hidden = n_hidden
         self.res = res
         self.fc = nn.Linear(n_hidden, self.res * self.res)
-        self.conv1 = nn.Conv2d(1 + n_color, n_ch, 3, padding=1)
+        self.conv1 = nn.Conv2d(1 + n_c_in, n_ch, 3, padding=1)
         self.bn1 = nn.BatchNorm2d(n_ch)
 
         for i in range(1, self.n_resblock + 1):
             setattr(self, 'block{:d}'.format(i), GenResBlock(n_ch))
-        self.conv2 = nn.Conv2d(n_ch, n_color, 3, padding=1)
+        self.conv2 = nn.Conv2d(n_ch, n_c_out, 3, padding=1)
 
     def gen_noise(self, batchsize):
         return torch.randn(batchsize, self.n_hidden)  # z_{i} ~ N(0, 1)
@@ -113,13 +113,13 @@ class DisBlock(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, n_ch, res, n_color):
+    def __init__(self, n_ch, res, n_c_in):
         super(Discriminator, self).__init__()
         self.slope = 0.2
         self.res = res
         self.len_block = int(np.log2(res)) - 3  # 32 -> 2, 28 -> 1
 
-        self.conv1 = nn.Conv2d(n_color, n_ch, 3, stride=2, padding=1)
+        self.conv1 = nn.Conv2d(n_c_in, n_ch, 3, stride=2, padding=1)
         for i in range(self.len_block):
             setattr(self, 'block{:d}'.format(i + 1),
                     DisBlock(n_ch * (2 ** i), n_ch * (2 ** (i + 1))))

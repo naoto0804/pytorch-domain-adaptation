@@ -40,11 +40,12 @@ def experiment(exp, seed, modelname):
     n_sample = max(data_src.train_X.shape[0], data_tgt.train_X.shape[0])
     iter_per_epoch = n_sample // params['batch_size'] + 1
 
-    n_color = data_src.train_X.shape[1]
+    n_c_src = data_src.train_X.shape[1]
+    n_c_tgt = data_tgt.train_X.shape[1]
     res = data_src.train_X.shape[-1]
 
-    cls_s = Classifier(data_src.n_classes, n_color, res).cuda()
-    cls_t = Classifier(data_src.n_classes, n_color, res).cuda()
+    cls_s = Classifier(data_src.n_classes, n_c_src, res).cuda()
+    cls_t = Classifier(data_src.n_classes, n_c_tgt, res).cuda()
 
     if modelname:
         load_model(cls_s, modelname)
@@ -53,17 +54,17 @@ def experiment(exp, seed, modelname):
         cls_s.apply(weights_init_kaiming)
         cls_t.apply(weights_init_kaiming)
 
-    gen_params_dict = params['gen_init']
-    gen_params_dict.update({'res': res, 'n_color': n_color})
-    gen_s_t = Generator(**gen_params_dict).cuda()
-    gen_t_s = Generator(**gen_params_dict).cuda()
+    gen_s_t_params = {**{'res': res, 'n_c_in': n_c_src, 'n_c_out': n_c_tgt}}
+    gen_t_s_params = {**{'res': res, 'n_c_in': n_c_tgt, 'n_c_out': n_c_src}}
+    gen_s_t = Generator(**{**params['gen_init'], **gen_s_t_params}).cuda()
+    gen_t_s = Generator(**{**params['gen_init'], **gen_t_s_params}).cuda()
     gen_s_t.apply(weights_init_normal)
     gen_t_s.apply(weights_init_normal)
 
-    dis_params_dict = params['dis_init']
-    dis_params_dict.update({'res': res, 'n_color': n_color})
-    dis_s = Discriminator(**dis_params_dict).cuda()
-    dis_t = Discriminator(**dis_params_dict).cuda()
+    dis_s_params = {**{'res': res, 'n_c_in': n_c_src}}
+    dis_t_params = {**{'res': res, 'n_c_in': n_c_tgt}}
+    dis_s = Discriminator(**{**params['dis_init'], **dis_s_params}).cuda()
+    dis_t = Discriminator(**{**params['dis_init'], **dis_t_params}).cuda()
     dis_s.apply(weights_init_normal)
     dis_t.apply(weights_init_normal)
 
@@ -192,9 +193,13 @@ def experiment(exp, seed, modelname):
             cls_t.train()
 
             if epoch % 5 == 0:
-                tpl = tuple(
-                    x.data.cpu() for x in [src_X, fake_tgt_X, fake_back_src_X])
-                grid = make_grid(torch.cat(tpl, dim=0),
+                data = []
+                for x in [src_X, fake_tgt_X, fake_back_src_X]:
+                    x = x.data.cpu()
+                    if x.size(1) == 1:
+                        x = x.repeat(1, 3, 1, 1)  # grayscale2rgb
+                    data.append(x)
+                grid = make_grid(torch.cat(tuple(data), dim=0),
                                  normalize=True, range=(-1.0, 1.0))
                 writer.add_image('generated', grid, epoch)
                 save_model(gen_s_t,
