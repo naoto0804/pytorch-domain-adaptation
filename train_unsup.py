@@ -9,11 +9,11 @@ from torch.autograd import Variable
 from torch.nn import functional as F
 from torch.optim import Adam
 
-from loader import load_source_target_datasets
+from datasets import load_source_target_datasets
 from net import Classifier, weights_init_kaiming
 from opt import params, exp_list
-from util import norm_cls_to_gan
-from util import save_model
+from util.io import save_model
+from util.normalize import norm_cls_to_gan
 
 torch.backends.cudnn.benchmark = True
 

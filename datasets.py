@@ -14,6 +14,7 @@ from batchup.datasets import mnist, fashion_mnist, cifar10, svhn, stl, usps
 from skimage.transform import downscale_local_mean, resize
 import torch
 from PIL import Image
+from preprocess import OriginalAffineTransform
 
 _CONFIG = None
 
@@ -772,17 +773,23 @@ def load_source_target_datasets(exp):
 
 class DADataset(torch.utils.data.Dataset):
     # wrapper to apply transform only on images
-    def __init__(self, images, targets=None, transform=None):
-        self.images = np.uint8(images * 255.0).transpose(0, 2, 3, 1).squeeze()
+    def __init__(self, images, targets=None, transform=None, affine=False):
+        self.images = np.uint8(images * 255.0).transpose(0, 2, 3, 1)
         if targets is not None:
             self.targets = torch.from_numpy(targets).long()
         else:
             self.targets = None
         self.transform = transform
+        self.affine = affine
+        self.affine_transform = OriginalAffineTransform()
 
     def __getitem__(self, index):
         img = self.images[index]
-        img = Image.fromarray(img)
+        # Points outside the boundaries of the input should be filled
+        # However, affinetransform in torchvision does not support this
+        if self.affine:
+            img = self.affine_transform(img)
+        img = Image.fromarray(img.squeeze())
         if self.transform is not None:
             img = self.transform(img)
         if self.targets is None:

@@ -2,7 +2,6 @@ import os
 from itertools import chain
 
 import click
-import numpy as np
 import torch
 import torch.cuda
 from tensorboardX import SummaryWriter
@@ -10,7 +9,6 @@ from torch.autograd import Variable
 from torch.nn import functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-from torchvision import transforms
 from torchvision.utils import make_grid
 
 from datasets import DADataset
@@ -23,33 +21,13 @@ from net import weights_init_kaiming
 from net import weights_init_normal
 from opt import exp_list
 from opt import params
+from preprocess import get_composed_transforms
 from util.image_pool import ImagePool
 from util.io import load_model
 from util.io import save_models_dict
 from util.sampler import InfiniteSampler
 
 torch.backends.cudnn.benchmark = True
-
-
-class Evaluator(object):
-    def __init__(self, path_to_lmdb_dir):
-        self._loader = torch.utils.data.DataLoader(Dataset(path_to_lmdb_dir),
-                                                   batch_size=128,
-                                                   shuffle=False)
-
-    def evaluate(self, model):
-        model.eval()
-        num_correct = 0
-
-        for batch_idx, (images, labels) in enumerate(self._loader):
-            images, labels = Variable(images.cuda(), volatile=True), Variable(
-                labels.cuda())
-            logits = model(images)
-            predictions = logits.data.max(1)[1]
-            num_correct += predictions.eq(labels.data).cpu().sum()
-
-        accuracy = num_correct / float(len(self._loader.dataset))
-        return accuracy
 
 
 @click.command()
@@ -75,19 +53,12 @@ def experiment(exp, modelname):
     res = src.train_X.shape[-1]  # size of image
     n_classes = src.n_classes
 
-    train_transform_list = [transforms.RandomAffine(22.5, (0.1, 0.1))]
-    if False:  # will be used for cifar-stl
-        train_transform_list.append(transforms.RandomHorizontalFlip())
+    train_tfs = get_composed_transforms(train=True, hflip=False)
+    test_tfs = get_composed_transforms(train=False, hflip=False)
 
-    normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # gan
-    postprocess = [transforms.ToTensor(), normalize]
-    train_transform_list += postprocess
-    train_transform = transforms.Compose(train_transform_list)
-    test_transform = transforms.Compose(postprocess)
-
-    src_train = DADataset(src.train_X, src.train_y, train_transform)
-    tgt_train = DADataset(tgt.train_X, transform=train_transform)
-    tgt_test = DADataset(tgt.test_X, tgt.test_y, test_transform)
+    src_train = DADataset(src.train_X, src.train_y, train_tfs, True)
+    tgt_train = DADataset(tgt.train_X, None, train_tfs, True)
+    tgt_test = DADataset(tgt.test_X, tgt.test_y, test_tfs, False)
     del src, tgt
 
     n_sample = max(len(src_train), len(tgt_train))
@@ -217,16 +188,13 @@ def experiment(exp, modelname):
                 prob_y = F.softmax(cls_t(tgt_X), dim=1).data.cpu()
                 pred_y = torch.max(prob_y, dim=1)[1]
                 n_err += (pred_y != tgt_y).sum()
-                from IPython import embed
-                embed()
-                exit()
 
             writer.add_scalar('err_tgt', n_err / len(tgt_test), epoch)
 
             cls_s.train()
             cls_t.train()
 
-            if epoch % 10 == 0:
+            if epoch % 5 == 0:
                 data = []
                 for x in [src_X, fake_tgt_X, fake_back_src_X]:
                     x = x.data.cpu()
