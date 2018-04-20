@@ -5,47 +5,96 @@ import click
 import numpy as np
 import torch
 import torch.cuda
-from batchup import data_source
 from tensorboardX import SummaryWriter
 from torch.autograd import Variable
 from torch.nn import functional as F
 from torch.optim import Adam
+from torch.utils.data import DataLoader
+from torchvision import transforms
 from torchvision.utils import make_grid
 
-from loader import load_source_target_datasets
+from datasets import DADataset
+from datasets import load_source_target_datasets
 from loss import GANLoss
-from net import Generator, Discriminator, weights_init_normal, \
-    Classifier, weights_init_kaiming
-from opt import params, exp_list
-from util import ImagePool, norm_cls_to_gan, load_model, save_models_dict
+from net import Classifier
+from net import Discriminator
+from net import Generator
+from net import weights_init_kaiming
+from net import weights_init_normal
+from opt import exp_list
+from opt import params
+from util.image_pool import ImagePool
+from util.io import load_model
+from util.io import save_models_dict
+from util.sampler import InfiniteSampler
 
 torch.backends.cudnn.benchmark = True
 
 
+class Evaluator(object):
+    def __init__(self, path_to_lmdb_dir):
+        self._loader = torch.utils.data.DataLoader(Dataset(path_to_lmdb_dir),
+                                                   batch_size=128,
+                                                   shuffle=False)
+
+    def evaluate(self, model):
+        model.eval()
+        num_correct = 0
+
+        for batch_idx, (images, labels) in enumerate(self._loader):
+            images, labels = Variable(images.cuda(), volatile=True), Variable(
+                labels.cuda())
+            logits = model(images)
+            predictions = logits.data.max(1)[1]
+            num_correct += predictions.eq(labels.data).cpu().sum()
+
+        accuracy = num_correct / float(len(self._loader.dataset))
+        return accuracy
+
+
 @click.command()
 @click.option('--exp', type=click.Choice(exp_list), required=True)
-@click.option('--seed', type=int, default=0,
-              help='random seed (0 for time-based)')
 @click.option('--modelname', type=str, default='')
-def experiment(exp, seed, modelname):
+def experiment(exp, modelname):
     writer = SummaryWriter()
     log_dir = 'log/{:s}/sbada'.format(exp)
     os.makedirs(log_dir, exist_ok=True)
 
-    data_src, data_tgt = load_source_target_datasets(exp)
+    alpha = params['weight']['alpha']
+    beta = params['weight']['beta']
+    gamma = params['weight']['gamma']
+    mu = params['weight']['mu']
+    new = params['weight']['new']
+    eta = 0.0
+    batch_size = params['batch_size']
 
-    # Delete the training ground truths as we should not be using them
-    del data_tgt.train_y
+    src, tgt = load_source_target_datasets(exp)
 
-    n_sample = max(data_src.train_X.shape[0], data_tgt.train_X.shape[0])
-    iter_per_epoch = n_sample // params['batch_size'] + 1
+    n_ch_s = src.train_X.shape[1]  # number of color channels
+    n_ch_t = tgt.train_X.shape[1]  # number of color channels
+    res = src.train_X.shape[-1]  # size of image
+    n_classes = src.n_classes
 
-    n_c_src = data_src.train_X.shape[1]
-    n_c_tgt = data_tgt.train_X.shape[1]
-    res = data_src.train_X.shape[-1]
+    train_transform_list = [transforms.RandomAffine(22.5, (0.1, 0.1))]
+    if False:  # will be used for cifar-stl
+        train_transform_list.append(transforms.RandomHorizontalFlip())
 
-    cls_s = Classifier(data_src.n_classes, n_c_src, res).cuda()
-    cls_t = Classifier(data_src.n_classes, n_c_tgt, res).cuda()
+    normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # gan
+    postprocess = [transforms.ToTensor(), normalize]
+    train_transform_list += postprocess
+    train_transform = transforms.Compose(train_transform_list)
+    test_transform = transforms.Compose(postprocess)
+
+    src_train = DADataset(src.train_X, src.train_y, train_transform)
+    tgt_train = DADataset(tgt.train_X, transform=train_transform)
+    tgt_test = DADataset(tgt.test_X, tgt.test_y, test_transform)
+    del src, tgt
+
+    n_sample = max(len(src_train), len(tgt_train))
+    iter_per_epoch = n_sample // batch_size + 1
+
+    cls_s = Classifier(n_classes, n_ch_s, res).cuda()
+    cls_t = Classifier(n_classes, n_ch_t, res).cuda()
 
     if modelname:
         load_model(cls_s, modelname)
@@ -54,15 +103,15 @@ def experiment(exp, seed, modelname):
         cls_s.apply(weights_init_kaiming)
         cls_t.apply(weights_init_kaiming)
 
-    gen_s_t_params = {'res': res, 'n_c_in': n_c_src, 'n_c_out': n_c_tgt}
-    gen_t_s_params = {'res': res, 'n_c_in': n_c_tgt, 'n_c_out': n_c_src}
+    gen_s_t_params = {'res': res, 'n_c_in': n_ch_s, 'n_c_out': n_ch_t}
+    gen_t_s_params = {'res': res, 'n_c_in': n_ch_t, 'n_c_out': n_ch_s}
     gen_s_t = Generator(**{**params['gen_init'], **gen_s_t_params}).cuda()
     gen_t_s = Generator(**{**params['gen_init'], **gen_t_s_params}).cuda()
     gen_s_t.apply(weights_init_normal)
     gen_t_s.apply(weights_init_normal)
 
-    dis_s_params = {'res': res, 'n_c_in': n_c_src}
-    dis_t_params = {'res': res, 'n_c_in': n_c_tgt}
+    dis_s_params = {'res': res, 'n_c_in': n_ch_s}
+    dis_t_params = {'res': res, 'n_c_in': n_ch_t}
     dis_s = Discriminator(**{**params['dis_init'], **dis_s_params}).cuda()
     dis_t = Discriminator(**{**params['dis_init'], **dis_t_params}).cuda()
     dis_s.apply(weights_init_normal)
@@ -76,45 +125,30 @@ def experiment(exp, seed, modelname):
     calc_ls = GANLoss(use_lsgan=True, tensor=torch.cuda.FloatTensor)
     calc_ce = F.cross_entropy
 
-    if seed != 0:
-        rng = np.random.RandomState(seed)
-    else:
-        rng = np.random
-    data_src.train_X = norm_cls_to_gan(data_src.train_X)
-    data_tgt.train_X = norm_cls_to_gan(data_tgt.train_X)
-    data_tgt.test_X = norm_cls_to_gan(data_tgt.test_X)
-    source_train_ds = data_source.ArrayDataSource(
-        [data_src.train_X, data_src.train_y], repeats=-1)
-    target_train_ds = data_source.ArrayDataSource(
-        [data_tgt.train_X], repeats=-1)
-    target_test_ds = data_source.ArrayDataSource(
-        [data_tgt.test_X, data_tgt.test_y])
-    ds = data_source.CompositeDataSource(
-        [source_train_ds, target_train_ds])
+    fake_src_X_pool = ImagePool(params['pool_size'] * batch_size)
+    fake_tgt_X_pool = ImagePool(params['pool_size'] * batch_size)
 
-    alpha = params['weight']['alpha']
-    beta = params['weight']['beta']
-    gamma = params['weight']['gamma']
-    mu = params['weight']['mu']
-    new = params['weight']['new']
-    eta = 0.0
-
-    fake_src_X_pool = ImagePool(params['pool_size'] * params['batch_size'])
-    fake_tgt_X_pool = ImagePool(params['pool_size'] * params['batch_size'])
-
+    src_train_iter = iter(DataLoader(
+        src_train, batch_size=batch_size, num_workers=4,
+        sampler=InfiniteSampler(len(src_train))))
+    tgt_train_iter = iter(DataLoader(
+        tgt_train, batch_size=batch_size, num_workers=4,
+        sampler=InfiniteSampler(len(tgt_train))))
+    tgt_test_loader = DataLoader(
+        tgt_test, batch_size=batch_size * 4, num_workers=4)
     print('Training...')
 
     niter = 0
-    for (src_X, src_y, tgt_X) in \
-            ds.batch_iterator(batch_size=params['batch_size'],
-                              shuffle=rng):
+    while True:
         niter += 1
+        src_X, src_y = next(src_train_iter)
+        tgt_X = next(tgt_train_iter)
+        src_X = Variable(src_X.cuda())
+        src_y = Variable(src_y.cuda())
+        tgt_X = Variable(tgt_X.cuda())
+
         if niter >= params['num_epochs'] // 2 * iter_per_epoch:
             eta = params['weight']['eta']
-
-        src_X = Variable(torch.from_numpy(src_X).cuda())
-        src_y = Variable(torch.from_numpy(src_y).long().cuda())
-        tgt_X = Variable(torch.from_numpy(tgt_X).cuda())
 
         fake_tgt_X = gen_s_t(src_X)
         fake_back_src_X = gen_t_s(fake_tgt_X)
@@ -173,21 +207,21 @@ def experiment(exp, seed, modelname):
             writer.add_scalar('dis/tgt', loss_dis_t.data.cpu()[0], niter)
 
         if niter % iter_per_epoch == 0:
-            def f_eval(X_sup, y_sup):
-                X_var = Variable(torch.from_numpy(X_sup).cuda(),
-                                 requires_grad=False)
-                y_t_prob = F.softmax(cls_t(X_var), dim=1).data.cpu().numpy()
-                # TODO: mix cls_t(X_var) and cls_s(gen_t_s(X_var))
-                y_pred = np.argmax(y_t_prob, axis=1)
-                return float((y_pred != y_sup).sum())
-
+            epoch = niter // iter_per_epoch
             cls_s.eval()
             cls_t.eval()
 
-            epoch = niter // iter_per_epoch
-            tgt_test_err, = target_test_ds.batch_map_mean(
-                f_eval, batch_size=params['batch_size'] * 4)
-            writer.add_scalar('err_tgt', tgt_test_err, epoch)
+            n_err = 0
+            for batch_idx, (tgt_X, tgt_y) in enumerate(tgt_test_loader):
+                tgt_X = Variable(tgt_X.cuda(), requires_grad=False)
+                prob_y = F.softmax(cls_t(tgt_X), dim=1).data.cpu()
+                pred_y = torch.max(prob_y, dim=1)[1]
+                n_err += (pred_y != tgt_y).sum()
+                from IPython import embed
+                embed()
+                exit()
+
+            writer.add_scalar('err_tgt', n_err / len(tgt_test), epoch)
 
             cls_s.train()
             cls_t.train()
@@ -209,6 +243,9 @@ def experiment(exp, seed, modelname):
                     'dis_t': dis_t, 'gen_s_t': gen_s_t, 'gen_t_s': gen_t_s}
                 filename = '{:s}/epoch{:d}.tar'.format(log_dir, epoch)
                 save_models_dict(models_dict, filename)
+
+            if epoch >= params['num_epochs']:
+                break
 
 
 if __name__ == '__main__':

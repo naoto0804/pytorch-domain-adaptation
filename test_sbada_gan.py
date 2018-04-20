@@ -1,15 +1,15 @@
 import click
-import numpy as np
-import torch
 import torch.cuda
-from batchup import data_source
+from loader import load_source_target_datasets
 from torch.autograd import Variable
 from torch.nn import functional as F
+from torch.utils.data import DataLoader
+from torchvision import transforms
 
-from loader import load_source_target_datasets
+from datasets import DADataset
 from net import Classifier, Generator
 from opt import exp_list, params
-from util import norm_cls_to_gan, load_models_dict
+from util.io import load_models_dict
 
 torch.backends.cudnn.benchmark = True
 
@@ -19,40 +19,40 @@ torch.backends.cudnn.benchmark = True
 @click.option('--snapshot', type=str, required=True)
 @click.option('--mix_ratio', type=str, default=1.0)
 def experiment(exp, snapshot, mix_ratio):
-    data_src, data_tgt = load_source_target_datasets(exp)
+    src, tgt = load_source_target_datasets(exp)
+    n_ch_s = src.train_X.shape[1]  # number of color channels
+    n_ch_t = tgt.train_X.shape[1]  # number of color channels
+    res = src.train_X.shape[-1]  # size of image
+    n_classes = src.n_classes
 
-    n_color_s = data_src.train_X.shape[1]
-    n_color_t = data_tgt.train_X.shape[1]
-    res = data_tgt.train_X.shape[-1]
-    del data_src
-
-    cls_s = Classifier(data_tgt.n_classes, n_color_s, res).cuda()
-    cls_t = Classifier(data_tgt.n_classes, n_color_t, res).cuda()
-    add_params = {'res': res, 'n_c_in': n_color_t, 'n_c_out': n_color_s}
+    cls_s = Classifier(n_classes, n_ch_s, res).cuda()
+    cls_t = Classifier(n_classes, n_ch_t, res).cuda()
+    add_params = {'res': res, 'n_c_in': n_ch_t, 'n_c_out': n_ch_s}
     gen_t_s = Generator(**{**params['gen_init'], **add_params}).cuda()
 
     models_dict = {'cls_s': cls_s, 'cls_t': cls_t, 'gen_t_s': gen_t_s}
     load_models_dict(models_dict, snapshot)
 
-    data_tgt.test_X = norm_cls_to_gan(data_tgt.test_X)
-    target_test_ds = data_source.ArrayDataSource(
-        [data_tgt.test_X, data_tgt.test_y])
+    normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # gan
+    postprocess = [transforms.ToTensor(), normalize]
+    transform = transforms.Compose(postprocess)
+
+    tgt_test = DADataset(tgt.test_X, tgt.test_y, transform)
+    tgt_test_loader = DataLoader(
+        tgt_test, batch_size=params['batch_size'] * 4, num_workers=4)
 
     print('Testing...')
     cls_t.eval()
 
-    def f_eval(X_sup, y_sup):
-        X_var = Variable(torch.from_numpy(X_sup).cuda(),
-                         requires_grad=False)
-        y_prob_t = F.softmax(cls_t(X_var), dim=1).data.cpu().numpy()
-        y_prob_s = F.softmax(cls_s(gen_t_s(X_var)), dim=1).data.cpu().numpy()
-        y_prob = (1 - mix_ratio) * y_prob_t + mix_ratio * y_prob_s
-        y_pred = np.argmax(y_prob, axis=1)
-        return float((y_pred != y_sup).sum())
-
-    tgt_test_err, = target_test_ds.batch_map_mean(
-        f_eval, batch_size=params['batch_size'] * 4)
-    print('TEST err={:.3%}'.format(tgt_test_err))
+    n_err = 0
+    for batch_idx, (tgt_X, tgt_y) in enumerate(tgt_test_loader):
+        tgt_X = Variable(tgt_X.cuda(), requires_grad=False)
+        prob_y_from_t = F.softmax(cls_t(tgt_X), dim=1).data.cpu()
+        prob_y_from_s = F.softmax(cls_s(gen_t_s(tgt_X)), dim=1).data.cpu()
+        prob_y = (1 - mix_ratio) * prob_y_from_s + mix_ratio * prob_y_from_t
+        pred_y = torch.max(prob_y, dim=1)[1]
+        n_err += (pred_y != tgt_y).sum()
+    print('Err:', n_err / len(tgt_test))
 
 
 if __name__ == '__main__':
