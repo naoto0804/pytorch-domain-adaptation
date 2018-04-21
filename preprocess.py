@@ -22,7 +22,7 @@ class OriginalAffineTransform(object):
         self.row_index = 1
         self.col_index = 2
 
-        self.rotation_range = 15
+        self.rotation_range = 45
         self.height_shift_range = 0.1
         self.width_shift_range = 0.1
         self.shear_range = None

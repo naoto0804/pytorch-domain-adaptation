@@ -176,6 +176,9 @@ def experiment(exp, modelname):
         if niter % 100 == 0 and niter > 0:
             writer.add_scalar('dis/src', loss_dis_s.data.cpu()[0], niter)
             writer.add_scalar('dis/tgt', loss_dis_t.data.cpu()[0], niter)
+            writer.add_scalar('cls/src', loss_cls_s.data.cpu()[0], niter)
+            writer.add_scalar('cls/tgt', loss_cls_t.data.cpu()[0], niter)
+            writer.add_scalar('gen', loss_gen.data.cpu()[0], niter)
 
         if niter % iter_per_epoch == 0:
             epoch = niter // iter_per_epoch
