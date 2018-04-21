@@ -17,8 +17,7 @@ from loss import GANLoss
 from net import Classifier
 from net import Discriminator
 from net import Generator
-from net import weights_init_kaiming
-from net import weights_init_normal
+from net import weights_init
 from opt import exp_list
 from opt import params
 from preprocess import get_composed_transforms
@@ -64,6 +63,9 @@ def experiment(exp, modelname):
     n_sample = max(len(src_train), len(tgt_train))
     iter_per_epoch = n_sample // batch_size + 1
 
+    weights_init_kaiming = weights_init('kaiming')
+    weights_init_gaussian = weights_init('gaussian')
+
     cls_s = Classifier(n_classes, n_ch_s, res).cuda()
     cls_t = Classifier(n_classes, n_ch_t, res).cuda()
 
@@ -78,26 +80,26 @@ def experiment(exp, modelname):
     gen_t_s_params = {'res': res, 'n_c_in': n_ch_t, 'n_c_out': n_ch_s}
     gen_s_t = Generator(**{**params['gen_init'], **gen_s_t_params}).cuda()
     gen_t_s = Generator(**{**params['gen_init'], **gen_t_s_params}).cuda()
-    gen_s_t.apply(weights_init_normal)
-    gen_t_s.apply(weights_init_normal)
+    gen_s_t.apply(weights_init_gaussian)
+    gen_t_s.apply(weights_init_gaussian)
 
     dis_s_params = {'res': res, 'n_c_in': n_ch_s}
     dis_t_params = {'res': res, 'n_c_in': n_ch_t}
     dis_s = Discriminator(**{**params['dis_init'], **dis_s_params}).cuda()
     dis_t = Discriminator(**{**params['dis_init'], **dis_t_params}).cuda()
-    dis_s.apply(weights_init_normal)
-    dis_t.apply(weights_init_normal)
+    dis_s.apply(weights_init_gaussian)
+    dis_t.apply(weights_init_gaussian)
 
     config = {'lr': params['base_lr'], 'weight_decay': params['weight_decay']}
     opt_cls = Adam(chain(cls_s.parameters(), cls_t.parameters()), **config)
-    opt_gen = Adam(chain(gen_t_s.parameters(), gen_s_t.parameters()), **config)
+    opt_gen = Adam(chain(gen_s_t.parameters(), gen_t_s.parameters()), **config)
     opt_dis = Adam(chain(dis_s.parameters(), dis_t.parameters()), **config)
 
     calc_ls = GANLoss(use_lsgan=True, tensor=torch.cuda.FloatTensor)
     calc_ce = F.cross_entropy
 
-    fake_src_X_pool = ImagePool(params['pool_size'] * batch_size)
-    fake_tgt_X_pool = ImagePool(params['pool_size'] * batch_size)
+    fake_src_x_pool = ImagePool(params['pool_size'] * batch_size)
+    fake_tgt_x_pool = ImagePool(params['pool_size'] * batch_size)
 
     src_train_iter = iter(DataLoader(
         src_train, batch_size=batch_size, num_workers=4,
@@ -112,57 +114,57 @@ def experiment(exp, modelname):
     niter = 0
     while True:
         niter += 1
-        src_X, src_y = next(src_train_iter)
-        tgt_X = next(tgt_train_iter)
-        src_X = Variable(src_X.cuda())
+        src_x, src_y = next(src_train_iter)
+        tgt_x = next(tgt_train_iter)
+        src_x = Variable(src_x.cuda())
         src_y = Variable(src_y.cuda())
-        tgt_X = Variable(tgt_X.cuda())
+        tgt_x = Variable(tgt_x.cuda())
 
-        if niter >= params['num_epochs'] // 2 * iter_per_epoch:
+        if niter >= params['num_epochs'] * 0.75 * iter_per_epoch:
             eta = params['weight']['eta']
 
-        fake_tgt_X = gen_s_t(src_X)
-        fake_back_src_X = gen_t_s(fake_tgt_X)
-        fake_src_X = gen_t_s(tgt_X)
+        fake_tgt_x = gen_s_t(src_x)
+        fake_back_src_x = gen_t_s(fake_tgt_x)
+        fake_src_x = gen_t_s(tgt_x)
 
         fake_src_pseudo_y = Variable(
-            torch.max(cls_s(fake_src_X).data, dim=1)[1])
+            torch.max(cls_s(fake_src_x).data, dim=1)[1])
 
         # eq2
-        loss_gen = beta * calc_ce(cls_t(fake_tgt_X), src_y)
+        loss_gen = beta * calc_ce(cls_t(fake_tgt_x), src_y)
 
         # eq3
-        loss_gen += gamma * calc_ls(dis_s(fake_src_X), True)
-        loss_gen += alpha * calc_ls(dis_t(fake_tgt_X), True)
+        loss_gen += gamma * calc_ls(dis_s(fake_src_x), True)
+        loss_gen += alpha * calc_ls(dis_t(fake_tgt_x), True)
 
         # eq5
-        loss_gen += eta * calc_ce(cls_s(fake_src_X), fake_src_pseudo_y)
+        loss_gen += eta * calc_ce(cls_s(fake_src_x), fake_src_pseudo_y)
 
         # eq6
-        loss_gen += new * calc_ce(cls_s(fake_back_src_X), src_y)
+        loss_gen += new * calc_ce(cls_s(fake_back_src_x), src_y)
 
         # do not backpropagate loss to generator
-        fake_tgt_X = fake_tgt_X.detach()
-        fake_src_X = fake_src_X.detach()
-        fake_back_src_X = fake_back_src_X.detach()
+        fake_tgt_x = fake_tgt_x.detach()
+        fake_src_x = fake_src_x.detach()
+        fake_back_src_x = fake_back_src_x.detach()
 
         # eq2
-        loss_cls_s = mu * calc_ce(cls_s(src_X), src_y)  # no feedback
-        loss_cls_t = beta * calc_ce(cls_t(fake_tgt_X), src_y)
+        loss_cls_s = mu * calc_ce(cls_s(src_x), src_y)  # no feedback
+        loss_cls_t = beta * calc_ce(cls_t(fake_tgt_x), src_y)
 
         # eq3
         loss_dis_s = gamma * calc_ls(
-            dis_s(fake_src_X_pool.query(fake_src_X.data)), False)
-        loss_dis_s += gamma * calc_ls(dis_s(src_X), True)
+            dis_s(fake_src_x_pool.query(fake_src_x.data)), False)
+        loss_dis_s += gamma * calc_ls(dis_s(src_x), True)
         loss_dis_t = alpha * calc_ls(
-            dis_t(fake_tgt_X_pool.query(fake_tgt_X.data)), False)
-        loss_dis_t += alpha * calc_ls(dis_t(tgt_X), True)
+            dis_t(fake_tgt_x_pool.query(fake_tgt_x.data)), False)
+        loss_dis_t += alpha * calc_ls(dis_t(tgt_x), True)
 
         # eq5
-        loss_cls_s += eta * calc_ce(cls_s(fake_src_X), fake_src_pseudo_y)
+        loss_cls_s += eta * calc_ce(cls_s(fake_src_x), fake_src_pseudo_y)
 
         # eq6
-        loss_cls_s += new * calc_ce(cls_s(fake_back_src_X), src_y)
+        loss_cls_s += new * calc_ce(cls_s(fake_back_src_x), src_y)
 
         loss_cls = loss_cls_s + loss_cls_t
         loss_dis = loss_dis_s + loss_dis_t
@@ -186,20 +188,21 @@ def experiment(exp, modelname):
             cls_t.eval()
 
             n_err = 0
-            for batch_idx, (tgt_X, tgt_y) in enumerate(tgt_test_loader):
-                tgt_X = Variable(tgt_X.cuda(), requires_grad=False)
-                prob_y = F.softmax(cls_t(tgt_X), dim=1).data.cpu()
+            for batch_idx, (x, y) in enumerate(tgt_test_loader):
+                x = Variable(x.cuda(), requires_grad=False)
+                prob_y = F.softmax(cls_t(x), dim=1).data.cpu()
                 pred_y = torch.max(prob_y, dim=1)[1]
-                n_err += (pred_y != tgt_y).sum()
+                n_err += (pred_y != y).sum()
 
             writer.add_scalar('err_tgt', n_err / len(tgt_test), epoch)
 
             cls_s.train()
             cls_t.train()
 
-            if epoch % 5 == 0:
+            if epoch % 1 == 0:
                 data = []
-                for x in [src_X, fake_tgt_X, fake_back_src_X]:
+                for x in [src_x, fake_tgt_x, fake_back_src_x, tgt_x,
+                          fake_src_x]:
                     x = x.data.cpu()
                     if x.size(1) == 1:
                         x = x.repeat(1, 3, 1, 1)  # grayscale2rgb

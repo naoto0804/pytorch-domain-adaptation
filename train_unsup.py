@@ -1,91 +1,78 @@
 import os
 
 import click
-import numpy as np
 import torch
 import torch.cuda
-from batchup import data_source
 from torch.autograd import Variable
 from torch.nn import functional as F
 from torch.optim import Adam
+from torch.utils.data import DataLoader
 
+from datasets import DADataset
 from datasets import load_source_target_datasets
-from net import Classifier, weights_init_kaiming
-from opt import params, exp_list
+from net import Classifier
+from net import weights_init
+from opt import exp_list
+from opt import params
+from preprocess import get_composed_transforms
 from util.io import save_model
-from util.normalize import norm_cls_to_gan
 
 torch.backends.cudnn.benchmark = True
 
 
 @click.command()
 @click.option('--exp', type=click.Choice(exp_list), required=True)
-@click.option('--seed', type=int, default=0,
-              help='random seed (0 for time-based)')
-def experiment(exp, seed):
+def experiment(exp):
+    num_epochs = 500
     log_dir = 'log/{:s}/unsup'.format(exp)
     os.makedirs(log_dir, exist_ok=True)
 
-    data_src, data_tgt = load_source_target_datasets(exp)
-    del data_tgt.train_y
-    del data_tgt.train_X
+    src, tgt = load_source_target_datasets(exp)
 
-    n_color = data_src.train_X.shape[1]
-    res = data_src.train_X.shape[-1]
+    n_ch_t = tgt.train_X.shape[1]  # number of color channels
+    res = src.train_X.shape[-1]  # size of image
+    n_classes = src.n_classes
 
-    cls = Classifier(data_tgt.n_classes, n_color, res).cuda()
-    cls.apply(weights_init_kaiming)
+    cls = Classifier(n_classes, n_ch_t, res).cuda()
+    cls.apply(weights_init('kaiming'))
 
     config = {'lr': params['base_lr'], 'weight_decay': params['weight_decay']}
     optimizer = Adam(list(cls.parameters()), **config)
 
-    if seed != 0:
-        rng = np.random.RandomState(seed)
-    else:
-        rng = np.random
+    train_tfs = get_composed_transforms(train=True, hflip=False)
+    test_tfs = get_composed_transforms(train=False, hflip=False)
+    src_train = DADataset(src.train_X, src.train_y, train_tfs, True)
+    tgt_test = DADataset(tgt.test_X, tgt.test_y, test_tfs, False)
 
-    data_src.train_X = norm_cls_to_gan(data_src.train_X)
-    data_tgt.test_X = norm_cls_to_gan(data_tgt.test_X)
-
-    source_train_ds = data_source.ArrayDataSource(
-        [data_src.train_X, data_src.train_y])
-    target_test_ds = data_source.ArrayDataSource(
-        [data_tgt.test_X, data_tgt.test_y])
-    niter = 0
+    src_train_loader = DataLoader(src_train, batch_size=params['batch_size'],
+                                  num_workers=4, shuffle=True)
+    tgt_test_loader = DataLoader(tgt_test, batch_size=params['batch_size'],
+                                 num_workers=4)
 
     print('Training...')
-    for epoch in range(params['num_epochs']):
+    for epoch in range(1, num_epochs + 1):
 
         cls.train()
-
-        for (src_X, src_y) in source_train_ds.batch_iterator(
-                batch_size=params['batch_size'], shuffle=rng):
-            niter += 1
-            src_X = Variable(torch.from_numpy(src_X).cuda())
-            src_y = Variable(torch.from_numpy(src_y).long().cuda())
-
-            loss = F.cross_entropy(cls(src_X), src_y)
+        for tgt_X, tgt_y in src_train_loader:
+            tgt_X = Variable(tgt_X.cuda())
+            tgt_y = Variable(tgt_y.cuda())
+            loss = F.cross_entropy(cls(tgt_X), tgt_y)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-        cls.eval()
+        if epoch % 5 == 0 and epoch > 0:
+            cls.eval()
+            n_err = 0
+            for tgt_X, tgt_y in tgt_test_loader:
+                tgt_X = Variable(tgt_X.cuda(), requires_grad=False)
+                prob_y = F.softmax(cls(tgt_X), dim=1).data.cpu()
+                pred_y = torch.max(prob_y, dim=1)[1]
+                n_err += (pred_y != tgt_y).sum()
+            print('Epoch {:d}, Err {:f}'.format(epoch, n_err / len(tgt_test)))
 
-        def f_eval(X_sup, y_sup):
-            X_var = Variable(torch.from_numpy(X_sup).cuda(),
-                             requires_grad=False)
-            y_t_prob = F.softmax(cls(X_var), dim=1).data.cpu().numpy()
-            y_pred = np.argmax(y_t_prob, axis=1)
-            return float((y_pred != y_sup).sum())
-
-        tgt_test_err, = target_test_ds.batch_map_mean(
-            f_eval, batch_size=params['batch_size'] * 4)
-
-        fmt = '*** Epoch {} TGT TEST err={:.3%}'
-        print(fmt.format(epoch, tgt_test_err))
-
-        if (epoch + 1) % 100 == 0 and epoch > 0:
-            save_model(cls, '{:s}/epoch{:d}.tar'.format(log_dir, epoch + 1))
+        if epoch % 100 == 0 and epoch > 0:
+            save_model(cls, '{:s}/epoch{:d}.tar'.format(log_dir, epoch))
 
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from datasets import DADataset
 from datasets import load_source_target_datasets
 from net import Classifier
-from net import weights_init_kaiming
+from net import weights_init
 from opt import exp_list
 from opt import params
 from preprocess import get_composed_transforms
@@ -34,7 +34,7 @@ def experiment(exp):
     n_classes = src.n_classes
 
     cls = Classifier(n_classes, n_ch_t, res).cuda()
-    cls.apply(weights_init_kaiming)
+    cls.apply(weights_init('kaiming'))
 
     config = {'lr': params['base_lr'], 'weight_decay': params['weight_decay']}
     optimizer = Adam(list(cls.parameters()), **config)
@@ -50,7 +50,7 @@ def experiment(exp):
                                  num_workers=4)
 
     print('Training...')
-    for epoch in range(num_epochs):
+    for epoch in range(1, num_epochs + 1):
 
         cls.train()
         for tgt_X, tgt_y in tgt_train_loader:
@@ -71,8 +71,8 @@ def experiment(exp):
                 n_err += (pred_y != tgt_y).sum()
             print('Epoch {:d}, Err {:f}'.format(epoch, n_err / len(tgt_test)))
 
-        if (epoch + 1) % 100 == 0 and epoch > 0:
-            save_model(cls, '{:s}/epoch{:d}.tar'.format(log_dir, epoch + 1))
+        if epoch % 100 == 0 and epoch > 0:
+            save_model(cls, '{:s}/epoch{:d}.tar'.format(log_dir, epoch))
 
 
 if __name__ == '__main__':
