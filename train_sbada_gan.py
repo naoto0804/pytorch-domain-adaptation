@@ -22,7 +22,6 @@ from opt import exp_list
 from opt import params
 from preprocess import get_composed_transforms
 from util.image_pool import ImagePool
-from util.io import load_model
 from util.io import save_models_dict
 from util.sampler import InfiniteSampler
 
@@ -31,8 +30,7 @@ torch.backends.cudnn.benchmark = True
 
 @click.command()
 @click.option('--exp', type=click.Choice(exp_list), required=True)
-@click.option('--modelname', type=str, default='')
-def experiment(exp, modelname):
+def experiment(exp):
     writer = SummaryWriter()
     log_dir = 'log/{:s}/sbada'.format(exp)
     os.makedirs(log_dir, exist_ok=True)
@@ -69,12 +67,8 @@ def experiment(exp, modelname):
     cls_s = Classifier(n_classes, n_ch_s, res).cuda()
     cls_t = Classifier(n_classes, n_ch_t, res).cuda()
 
-    if modelname:
-        load_model(cls_s, modelname)
-        load_model(cls_t, modelname)
-    else:
-        cls_s.apply(weights_init_kaiming)
-        cls_t.apply(weights_init_kaiming)
+    cls_s.apply(weights_init_kaiming)
+    cls_t.apply(weights_init_kaiming)
 
     gen_s_t_params = {'res': res, 'n_c_in': n_ch_s, 'n_c_out': n_ch_t}
     gen_t_s_params = {'res': res, 'n_c_in': n_ch_t, 'n_c_out': n_ch_s}
