@@ -53,10 +53,10 @@ def experiment(exp):
     for epoch in range(1, num_epochs + 1):
 
         cls.train()
-        for tgt_X, tgt_y in src_train_loader:
-            tgt_X = Variable(tgt_X.cuda())
+        for tgt_x, tgt_y in src_train_loader:
+            tgt_x = Variable(tgt_x.cuda())
             tgt_y = Variable(tgt_y.cuda())
-            loss = F.cross_entropy(cls(tgt_X), tgt_y)
+            loss = F.cross_entropy(cls(tgt_x), tgt_y)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -64,9 +64,9 @@ def experiment(exp):
         if epoch % 5 == 0 and epoch > 0:
             cls.eval()
             n_err = 0
-            for tgt_X, tgt_y in tgt_test_loader:
-                tgt_X = Variable(tgt_X.cuda(), requires_grad=False)
-                prob_y = F.softmax(cls(tgt_X), dim=1).data.cpu()
+            for tgt_x, tgt_y in tgt_test_loader:
+                tgt_x = Variable(tgt_x.cuda(), requires_grad=False)
+                prob_y = F.softmax(cls(tgt_x), dim=1).data.cpu()
                 pred_y = torch.max(prob_y, dim=1)[1]
                 n_err += (pred_y != tgt_y).sum()
             print('Epoch {:d}, Err {:f}'.format(epoch, n_err / len(tgt_test)))

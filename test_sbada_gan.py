@@ -17,7 +17,7 @@ torch.backends.cudnn.benchmark = True
 @click.command()
 @click.option('--exp', type=click.Choice(exp_list), required=True)
 @click.option('--snapshot', type=str, required=True)
-@click.option('--mix_ratio', type=str, default=1.0)
+@click.option('--mix_ratio', type=float, default=1.0)
 def experiment(exp, snapshot, mix_ratio):
     src, tgt = load_source_target_datasets(exp)
     n_ch_s = src.train_X.shape[1]  # number of color channels
