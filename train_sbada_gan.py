@@ -90,7 +90,8 @@ def experiment(exp, modelname):
     dis_s.apply(weights_init_gaussian)
     dis_t.apply(weights_init_gaussian)
 
-    config = {'lr': params['base_lr'], 'weight_decay': params['weight_decay']}
+    config = {'lr': params['base_lr'], 'weight_decay': params['weight_decay'],
+              'betas': params['betas']}
     opt_cls = Adam(chain(cls_s.parameters(), cls_t.parameters()), **config)
     opt_gen = Adam(chain(gen_s_t.parameters(), gen_t_s.parameters()), **config)
     opt_dis = Adam(chain(dis_s.parameters(), dis_t.parameters()), **config)
