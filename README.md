@@ -7,7 +7,7 @@ Please note that this is an ongoing project and I cannot fully reproduce the res
 
 ## Requirements
 - Python 3.5+
-- PyTorch
+- PyTorch 0.3
 - TorchVision
 - TensorboardX
 - batchup
@@ -33,6 +33,14 @@ CUDA_VISIBLE_DEVICES=<gpu_id> python train_sup.py --exp mnist_usps
 ```
 CUDA_VISIBLE_DEVICES=<gpu_id> python train_sbada_gan.py --exp mnist_usps
 ```
+
+## Results
+Accuracy [%] is shown. Note that the values are slightly different from the original paper [1].
+
+| | MNIST->USPS | USPS->MNIST | SVHN->MNIST | MNIST->SVHN |
+:---:|:----:|:----:|:----:|:----: 
+| Source Only |  |  |  |  |
+| Target Only |  |  |  |  |
 
 ## References
 - [1]: R. Paolo et al. "From source to target and back: symmetric bi-directional adaptive GAN.", in CVPR, 2018.
