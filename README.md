@@ -36,11 +36,15 @@ CUDA_VISIBLE_DEVICES=<gpu_id> python train_sbada_gan.py --exp mnist_usps
 
 ## Results
 Accuracy [%] is shown. Note that the values are slightly different from the original paper [1].
+Each model is trained for 200 epochs once.
 
-| | MNIST->USPS | USPS->MNIST | SVHN->MNIST | MNIST->SVHN |
-:---:|:----:|:----:|:----:|:----: 
-| Source Only |  |  |  |  |
-| Target Only |  |  |  |  |
+| | MNIST->USPS | USPS->MNIST |
+:---:|:----:|:----: 
+| Source Only | 78.7 | 60.7 |
+| SBADA-GAN C_{t} |  |  |
+| SBADA-GAN C_{s} |  |  |
+| SBADA-GAN |  |  |
+| Target Only | 96.1 | 99.3 |
 
 ## References
 - [1]: R. Paolo et al. "From source to target and back: symmetric bi-directional adaptive GAN.", in CVPR, 2018.
