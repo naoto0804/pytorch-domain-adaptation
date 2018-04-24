@@ -53,8 +53,8 @@ def experiment(exp):
     train_tfs = get_composed_transforms(train=True, hflip=False)
     test_tfs = get_composed_transforms(train=False, hflip=False)
 
-    src_train = DADataset(src.train_X, src.train_y, train_tfs, False, True)
-    tgt_train = DADataset(tgt.train_X, None, train_tfs, False, True)
+    src_train = DADataset(src.train_X, src.train_y, train_tfs, False)
+    tgt_train = DADataset(tgt.train_X, None, train_tfs, False)
     tgt_test = DADataset(tgt.test_X, tgt.test_y, test_tfs, False)
     del src, tgt
 
