@@ -779,14 +779,17 @@ def load_source_target_datasets(exp):
 
 class DADataset(torch.utils.data.Dataset):
     # wrapper to apply transform only on images
-    def __init__(self, images, targets=None, transform=None, affine=False):
-        self.images = np.uint8(images * 255.0).transpose(0, 2, 3, 1)
+    def __init__(self, images, targets=None, transform=None, affine=False,
+                 noise=False):
+        self.images = images.transpose(0, 2, 3, 1)  # (B, H, W, C)
+        assert 0.0 <= np.min(self.images) <= 1.0
         if targets is not None:
             self.targets = torch.from_numpy(targets).long()
         else:
             self.targets = None
         self.transform = transform
         self.affine = affine
+        self.noise = noise
         self.affine_transform = OriginalAffineTransform()
 
     def __getitem__(self, index):
@@ -795,7 +798,10 @@ class DADataset(torch.utils.data.Dataset):
         # However, affinetransform in torchvision does not support this
         if self.affine:
             img = self.affine_transform(img)
-        img = Image.fromarray(img.squeeze())
+        if self.noise:
+            img += np.random.normal(scale=0.01, size=img.shape)
+            img = img.clip(min=0.0, max=1.0)
+        img = Image.fromarray(np.uint8(img * 255.0).squeeze())
         if self.transform is not None:
             img = self.transform(img)
         if self.targets is None:
