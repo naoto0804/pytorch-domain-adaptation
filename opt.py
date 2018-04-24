@@ -1,5 +1,5 @@
 params = {
-    'batch_size': 32, 'base_lr': 1e-4, 'num_epochs': 200,
+    'batch_size': 32, 'base_lr': 1e-4,
     'betas': (0.5, 0.999), 'weight_decay': 1e-5, 'pool_size': 50,
     'weight': {'alpha': 1.0, 'gamma': 1.0, 'beta': 3.0, 'mu': 3.0,
                'eta': 1.0, 'new': 1.0},

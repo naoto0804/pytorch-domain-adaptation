@@ -30,7 +30,9 @@ torch.backends.cudnn.benchmark = True
 
 @click.command()
 @click.option('--exp', type=click.Choice(exp_list), required=True)
-def experiment(exp):
+@click.option('--affine', is_flag=True)
+@click.option('--num_epochs', type=int, default=200)
+def experiment(exp, affine, num_epochs):
     writer = SummaryWriter()
     log_dir = 'log/{:s}/sbada'.format(exp)
     os.makedirs(log_dir, exist_ok=True)
@@ -53,9 +55,9 @@ def experiment(exp):
     train_tfs = get_composed_transforms(train=True, hflip=False)
     test_tfs = get_composed_transforms(train=False, hflip=False)
 
-    src_train = DADataset(src.train_X, src.train_y, train_tfs, False)
-    tgt_train = DADataset(tgt.train_X, None, train_tfs, False)
-    tgt_test = DADataset(tgt.test_X, tgt.test_y, test_tfs, False)
+    src_train = DADataset(src.train_X, src.train_y, train_tfs, affine)
+    tgt_train = DADataset(tgt.train_X, None, train_tfs, affine)
+    tgt_test = DADataset(tgt.test_X, tgt.test_y, test_tfs, affine)
     del src, tgt
 
     n_sample = max(len(src_train), len(tgt_train))
@@ -115,7 +117,7 @@ def experiment(exp):
         src_y = Variable(src_y.cuda())
         tgt_x = Variable(tgt_x.cuda())
 
-        if niter >= params['num_epochs'] * 0.75 * iter_per_epoch:
+        if niter >= num_epochs * 0.75 * iter_per_epoch:
             eta = params['weight']['eta']
 
         fake_tgt_x = gen_s_t(src_x)
@@ -213,7 +215,7 @@ def experiment(exp):
                 filename = '{:s}/epoch{:d}.tar'.format(log_dir, epoch)
                 save_models_dict(models_dict, filename)
 
-            if epoch >= params['num_epochs']:
+            if epoch >= num_epochs:
                 break
 
 

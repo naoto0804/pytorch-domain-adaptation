@@ -22,8 +22,9 @@ torch.backends.cudnn.benchmark = True
 
 @click.command()
 @click.option('--exp', type=click.Choice(exp_list), required=True)
-def experiment(exp):
-    num_epochs = 500
+@click.option('--use_affine', is_flag=True)
+@click.option('--num_epochs', type=int, default=200)
+def experiment(exp, use_affine, num_epochs):
     log_dir = 'log/{:s}/sup'.format(exp)
     os.makedirs(log_dir, exist_ok=True)
 
@@ -41,8 +42,8 @@ def experiment(exp):
 
     train_tfs = get_composed_transforms(train=True, hflip=False)
     test_tfs = get_composed_transforms(train=False, hflip=False)
-    tgt_train = DADataset(tgt.train_X, tgt.train_y, train_tfs, True)
-    tgt_test = DADataset(tgt.test_X, tgt.test_y, test_tfs, False)
+    tgt_train = DADataset(tgt.train_X, tgt.train_y, train_tfs, use_affine)
+    tgt_test = DADataset(tgt.test_X, tgt.test_y, test_tfs, use_affine)
 
     tgt_train_loader = DataLoader(tgt_train, batch_size=params['batch_size'],
                                   num_workers=4, shuffle=True)

@@ -779,7 +779,7 @@ def load_source_target_datasets(exp):
 
 class DADataset(torch.utils.data.Dataset):
     # wrapper to apply transform only on images
-    def __init__(self, images, targets=None, transform=None, affine=False):
+    def __init__(self, images, targets=None, transform=None, use_affine=False):
         self.images = images.transpose(0, 2, 3, 1)  # (B, H, W, C)
         assert 0.0 <= np.min(self.images) <= 1.0
         if targets is not None:
@@ -787,14 +787,14 @@ class DADataset(torch.utils.data.Dataset):
         else:
             self.targets = None
         self.transform = transform
-        self.affine = affine
+        self.use_affine = use_affine
         self.affine_transform = OriginalAffineTransform()
 
     def __getitem__(self, index):
         img = self.images[index]
         # Points outside the boundaries of the input should be filled
         # However, affinetransform in torchvision does not support this
-        if self.affine:
+        if self.use_affine:
             img = self.affine_transform(img)
         img = Image.fromarray(np.uint8(img * 255.0).squeeze())
         if self.transform is not None:
