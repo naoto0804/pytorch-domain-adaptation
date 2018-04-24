@@ -196,7 +196,7 @@ def experiment(exp, affine, num_epochs):
             cls_s.train()
             cls_t.train()
 
-            if epoch % 1 == 0:
+            if epoch % 10 == 0:
                 data = []
                 for x in [src_x, fake_tgt_x, fake_back_src_x, tgt_x,
                           fake_src_x]:
