@@ -41,9 +41,9 @@ Each model is trained for 200 epochs once.
 | | MNIST->USPS | USPS->MNIST |
 :---:|:----:|:----: 
 | Source Only | 78.7 | 60.7 |
-| SBADA-GAN C_{t} |  |  |
-| SBADA-GAN C_{s} |  |  |
-| SBADA-GAN |  |  |
+| SBADA-GAN C_{t} | 95.9 | 92.9 |
+| SBADA-GAN C_{s} | 96.1 | 96.2 |
+| SBADA-GAN | 96.7 | 96.5 |
 | Target Only | 96.1 | 99.3 |
 
 ## References
