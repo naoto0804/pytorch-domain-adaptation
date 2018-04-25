@@ -3,19 +3,18 @@ import os
 import click
 import torch
 import torch.cuda
-from torch.autograd import Variable
 from torch.nn import functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from datasets import DADataset
 from datasets import load_source_target_datasets
-from net import Classifier
+from net import LenetClassifier
 from net import weights_init
 from opt import exp_list
 from opt import params
 from preprocess import get_composed_transforms
-from util.io import save_model
+from util import save_model
 
 torch.backends.cudnn.benchmark = True
 
@@ -27,6 +26,7 @@ torch.backends.cudnn.benchmark = True
 def experiment(exp, use_affine, num_epochs):
     log_dir = 'log/{:s}/sup'.format(exp)
     os.makedirs(log_dir, exist_ok=True)
+    device = torch.device('cuda')
 
     src, tgt = load_source_target_datasets(exp)
 
@@ -34,7 +34,7 @@ def experiment(exp, use_affine, num_epochs):
     res = src.train_X.shape[-1]  # size of image
     n_classes = src.n_classes
 
-    cls = Classifier(n_classes, n_ch_t, res).cuda()
+    cls = LenetClassifier(n_classes, n_ch_t, res).to(device)
     cls.apply(weights_init('kaiming'))
 
     config = {'lr': params['base_lr'], 'weight_decay': params['weight_decay']}
@@ -55,9 +55,7 @@ def experiment(exp, use_affine, num_epochs):
 
         cls.train()
         for tgt_x, tgt_y in tgt_train_loader:
-            tgt_x = Variable(tgt_x.cuda())
-            tgt_y = Variable(tgt_y.cuda())
-            loss = F.cross_entropy(cls(tgt_x), tgt_y)
+            loss = F.cross_entropy(cls(tgt_x.to(device)), tgt_y.to(device))
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -65,11 +63,12 @@ def experiment(exp, use_affine, num_epochs):
         if epoch % 5 == 0 and epoch > 0:
             cls.eval()
             n_err = 0
-            for tgt_x, tgt_y in tgt_test_loader:
-                tgt_x = Variable(tgt_x.cuda(), requires_grad=False)
-                prob_y = F.softmax(cls(tgt_x), dim=1).data.cpu()
-                pred_y = torch.max(prob_y, dim=1)[1]
-                n_err += (pred_y != tgt_y).sum()
+            with torch.no_grad():
+                for tgt_x, tgt_y in tgt_test_loader:
+                    prob_y = F.softmax(cls(tgt_x.to(device)), dim=1)
+                    pred_y = torch.max(prob_y, dim=1)[1]
+                    pred_y = pred_y.to(torch.device('cpu'))
+                    n_err += (pred_y != tgt_y).sum().item()
             print('Epoch {:d}, Err {:f}'.format(epoch, n_err / len(tgt_test)))
 
         if epoch % 100 == 0 and epoch > 0:

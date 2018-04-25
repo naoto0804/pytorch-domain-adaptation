@@ -5,7 +5,6 @@ import click
 import torch
 import torch.cuda
 from tensorboardX import SummaryWriter
-from torch.autograd import Variable
 from torch.nn import functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -14,16 +13,16 @@ from torchvision.utils import make_grid
 from datasets import DADataset
 from datasets import load_source_target_datasets
 from loss import GANLoss
-from net import Classifier
 from net import Discriminator
 from net import Generator
+from net import LenetClassifier
 from net import weights_init
 from opt import exp_list
 from opt import params
 from preprocess import get_composed_transforms
-from util.image_pool import ImagePool
-from util.io import save_models_dict
-from util.sampler import InfiniteSampler
+from util import ImagePool
+from util import InfiniteSampler
+from util import save_models_dict
 
 torch.backends.cudnn.benchmark = True
 
@@ -36,6 +35,7 @@ def experiment(exp, affine, num_epochs):
     writer = SummaryWriter()
     log_dir = 'log/{:s}/sbada'.format(exp)
     os.makedirs(log_dir, exist_ok=True)
+    device = torch.device('cuda')
 
     alpha = params['weight']['alpha']
     beta = params['weight']['beta']
@@ -66,23 +66,23 @@ def experiment(exp, affine, num_epochs):
     weights_init_kaiming = weights_init('kaiming')
     weights_init_gaussian = weights_init('gaussian')
 
-    cls_s = Classifier(n_classes, n_ch_s, res).cuda()
-    cls_t = Classifier(n_classes, n_ch_t, res).cuda()
+    cls_s = LenetClassifier(n_classes, n_ch_s, res).to(device)
+    cls_t = LenetClassifier(n_classes, n_ch_t, res).to(device)
 
     cls_s.apply(weights_init_kaiming)
     cls_t.apply(weights_init_kaiming)
 
     gen_s_t_params = {'res': res, 'n_c_in': n_ch_s, 'n_c_out': n_ch_t}
     gen_t_s_params = {'res': res, 'n_c_in': n_ch_t, 'n_c_out': n_ch_s}
-    gen_s_t = Generator(**{**params['gen_init'], **gen_s_t_params}).cuda()
-    gen_t_s = Generator(**{**params['gen_init'], **gen_t_s_params}).cuda()
+    gen_s_t = Generator(**{**params['gen_init'], **gen_s_t_params}).to(device)
+    gen_t_s = Generator(**{**params['gen_init'], **gen_t_s_params}).to(device)
     gen_s_t.apply(weights_init_gaussian)
     gen_t_s.apply(weights_init_gaussian)
 
     dis_s_params = {'res': res, 'n_c_in': n_ch_s}
     dis_t_params = {'res': res, 'n_c_in': n_ch_t}
-    dis_s = Discriminator(**{**params['dis_init'], **dis_s_params}).cuda()
-    dis_t = Discriminator(**{**params['dis_init'], **dis_t_params}).cuda()
+    dis_s = Discriminator(**{**params['dis_init'], **dis_s_params}).to(device)
+    dis_t = Discriminator(**{**params['dis_init'], **dis_t_params}).to(device)
     dis_s.apply(weights_init_gaussian)
     dis_t.apply(weights_init_gaussian)
 
@@ -92,7 +92,7 @@ def experiment(exp, affine, num_epochs):
     opt_gen = Adam(chain(gen_s_t.parameters(), gen_t_s.parameters()), **config)
     opt_dis = Adam(chain(dis_s.parameters(), dis_t.parameters()), **config)
 
-    calc_ls = GANLoss(use_lsgan=True, tensor=torch.cuda.FloatTensor)
+    calc_ls = GANLoss(device, use_lsgan=True)
     calc_ce = F.cross_entropy
 
     fake_src_x_pool = ImagePool(params['pool_size'] * batch_size)
@@ -113,9 +113,8 @@ def experiment(exp, affine, num_epochs):
         niter += 1
         src_x, src_y = next(src_train_iter)
         tgt_x = next(tgt_train_iter)
-        src_x = Variable(src_x.cuda())
-        src_y = Variable(src_y.cuda())
-        tgt_x = Variable(tgt_x.cuda())
+        src_x, src_y = src_x.to(device), src_y.to(device)
+        tgt_x = tgt_x.to(device)
 
         if niter >= num_epochs * 0.75 * iter_per_epoch:
             eta = params['weight']['eta']
@@ -124,8 +123,8 @@ def experiment(exp, affine, num_epochs):
         fake_back_src_x = gen_t_s(fake_tgt_x)
         fake_src_x = gen_t_s(tgt_x)
 
-        fake_src_pseudo_y = Variable(
-            torch.max(cls_s(fake_src_x).data, dim=1)[1])
+        with torch.no_grad():
+            fake_src_pseudo_y = torch.max(cls_s(fake_src_x), dim=1)[1]
 
         # eq2
         loss_gen = beta * calc_ce(cls_t(fake_tgt_x), src_y)
@@ -151,10 +150,10 @@ def experiment(exp, affine, num_epochs):
 
         # eq3
         loss_dis_s = gamma * calc_ls(
-            dis_s(fake_src_x_pool.query(fake_src_x.data)), False)
+            dis_s(fake_src_x_pool.query(fake_src_x)), False)
         loss_dis_s += gamma * calc_ls(dis_s(src_x), True)
         loss_dis_t = alpha * calc_ls(
-            dis_t(fake_tgt_x_pool.query(fake_tgt_x.data)), False)
+            dis_t(fake_tgt_x_pool.query(fake_tgt_x)), False)
         loss_dis_t += alpha * calc_ls(dis_t(tgt_x), True)
 
         # eq5
@@ -173,11 +172,11 @@ def experiment(exp, affine, num_epochs):
             opt.step()
 
         if niter % 100 == 0 and niter > 0:
-            writer.add_scalar('dis/src', loss_dis_s.data.cpu()[0], niter)
-            writer.add_scalar('dis/tgt', loss_dis_t.data.cpu()[0], niter)
-            writer.add_scalar('cls/src', loss_cls_s.data.cpu()[0], niter)
-            writer.add_scalar('cls/tgt', loss_cls_t.data.cpu()[0], niter)
-            writer.add_scalar('gen', loss_gen.data.cpu()[0], niter)
+            writer.add_scalar('dis/src', loss_dis_s.item(), niter)
+            writer.add_scalar('dis/tgt', loss_dis_t.item(), niter)
+            writer.add_scalar('cls/src', loss_cls_s.item(), niter)
+            writer.add_scalar('cls/tgt', loss_cls_t.item(), niter)
+            writer.add_scalar('gen', loss_gen.item(), niter)
 
         if niter % iter_per_epoch == 0:
             epoch = niter // iter_per_epoch
@@ -185,11 +184,12 @@ def experiment(exp, affine, num_epochs):
             cls_t.eval()
 
             n_err = 0
-            for batch_idx, (x, y) in enumerate(tgt_test_loader):
-                x = Variable(x.cuda(), requires_grad=False)
-                prob_y = F.softmax(cls_t(x), dim=1).data.cpu()
-                pred_y = torch.max(prob_y, dim=1)[1]
-                n_err += (pred_y != y).sum()
+            with torch.no_grad():
+                for tgt_x, tgt_y in tgt_test_loader:
+                    prob_y = F.softmax(cls_t(tgt_x.to(device)), dim=1)
+                    pred_y = torch.max(prob_y, dim=1)[1]
+                    pred_y = pred_y.to(torch.device('cpu'))
+                    n_err += (pred_y != tgt_y).sum().item()
 
             writer.add_scalar('err_tgt', n_err / len(tgt_test), epoch)
 
@@ -200,7 +200,7 @@ def experiment(exp, affine, num_epochs):
                 data = []
                 for x in [src_x, fake_tgt_x, fake_back_src_x, tgt_x,
                           fake_src_x]:
-                    x = x.data.cpu()
+                    x = x.to(torch.device('cpu'))
                     if x.size(1) == 1:
                         x = x.repeat(1, 3, 1, 1)  # grayscale2rgb
                     data.append(x)

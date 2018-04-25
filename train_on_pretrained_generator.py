@@ -10,26 +10,27 @@ from torch.utils.data import DataLoader
 
 from datasets import DADataset
 from datasets import load_source_target_datasets
-from net import Classifier
 from net import Generator
+from net import LenetClassifier
 from net import weights_init
 from opt import exp_list
 from opt import params
 from preprocess import get_composed_transforms
-from util.io import load_models_dict
-from util.io import save_model
-from util.sampler import InfiniteSampler
+from util import InfiniteSampler
+from util import load_models_dict
+from util import save_model
 
 torch.backends.cudnn.benchmark = True
 
 
 @click.command()
 @click.option('--exp', type=click.Choice(exp_list), required=True)
-@click.option('--modelname', type=str, required=True)
-def experiment(exp, modelname):
+@click.option('--snapshot', type=str, required=True)
+def experiment(exp, snapshot):
     num_epochs = 500
     log_dir = 'log/{:s}/generator'.format(exp)
     os.makedirs(log_dir, exist_ok=True)
+    device = torch.device('cuda')
 
     batch_size = params['batch_size']
 
@@ -50,12 +51,12 @@ def experiment(exp, modelname):
     n_sample = len(src_train)
     iter_per_epoch = n_sample // batch_size + 1
 
-    cls_t = Classifier(n_classes, n_ch_t, res).cuda()
+    cls_t = LenetClassifier(n_classes, n_ch_t, res).cuda()
     cls_t.apply(weights_init('kaiming'))
 
     gen_s_t_params = {'res': res, 'n_c_in': n_ch_s, 'n_c_out': n_ch_t}
     gen_s_t = Generator(**{**params['gen_init'], **gen_s_t_params}).cuda()
-    load_models_dict({'gen_s_t': gen_s_t}, modelname)
+    load_models_dict({'gen_s_t': gen_s_t}, snapshot)
 
     config = {'lr': params['base_lr'], 'weight_decay': params['weight_decay'],
               'betas': params['betas']}
@@ -87,11 +88,13 @@ def experiment(exp, modelname):
             epoch = niter // iter_per_epoch
 
             cls_t.eval()
-            for batch_idx, (x, y) in enumerate(tgt_test_loader):
-                x = Variable(x.cuda(), requires_grad=False)
-                prob_y = F.softmax(cls_t(x), dim=1).data.cpu()
-                pred_y = torch.max(prob_y, dim=1)[1]
-                n_err += (pred_y != y).sum()
+            with torch.no_grad():
+                for tgt_x, tgt_y in tgt_test_loader:
+                    prob_y = F.softmax(cls_t(tgt_x.to(device)), dim=1)
+                    pred_y = torch.max(prob_y, dim=1)[1]
+                    pred_y = pred_y.to(torch.device('cpu'))
+                    n_err += (pred_y != tgt_y).sum().item()
+
             cls_t.train()
             print('Epoch {:d}, Err {:f}'.format(epoch, n_err / len(tgt_test)))
 

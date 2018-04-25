@@ -1,10 +1,12 @@
 import torch
 
+cpu_device = torch.device('cpu')
+
 
 def save_model(model, filename):
     state_dict = model.state_dict()
     for key in state_dict.keys():
-        state_dict[key] = state_dict[key].cpu()
+        state_dict[key] = state_dict[key].to(cpu_device)
     torch.save(state_dict, filename)
 
 
@@ -19,7 +21,7 @@ def save_models_dict(models_dict, filename):
     for name, model in models_dict.items():
         state_dict = model.state_dict()
         for key in state_dict.keys():
-            state_dict[key] = state_dict[key].cpu()
+            state_dict[key] = state_dict[key].to(cpu_device)
         result[name] = state_dict
     torch.save(result, filename)
 

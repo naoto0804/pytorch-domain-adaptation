@@ -14,6 +14,7 @@ class ImagePool():
             self.images = []
 
     def query(self, images):
+        images.requires_grad_(False)  # disable autograd
         if self.pool_size == 0:
             return Variable(images)
         return_images = []

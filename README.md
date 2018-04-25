@@ -7,11 +7,10 @@ Please note that this is an ongoing project and I cannot fully reproduce the res
 
 ## Requirements
 - Python 3.5+
-- PyTorch 0.3
+- PyTorch 0.4
 - TorchVision
 - TensorboardX
 - batchup
-- tqdm
 - click
 
 
