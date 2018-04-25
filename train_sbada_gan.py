@@ -108,6 +108,9 @@ def experiment(exp, affine, num_epochs):
         tgt_test, batch_size=batch_size * 4, num_workers=4)
     print('Training...')
 
+    cls_s.train()
+    cls_t.train()
+
     niter = 0
     while True:
         niter += 1
@@ -180,21 +183,6 @@ def experiment(exp, affine, num_epochs):
 
         if niter % iter_per_epoch == 0:
             epoch = niter // iter_per_epoch
-            cls_s.eval()
-            cls_t.eval()
-
-            n_err = 0
-            with torch.no_grad():
-                for tgt_x, tgt_y in tgt_test_loader:
-                    prob_y = F.softmax(cls_t(tgt_x.to(device)), dim=1)
-                    pred_y = torch.max(prob_y, dim=1)[1]
-                    pred_y = pred_y.to(torch.device('cpu'))
-                    n_err += (pred_y != tgt_y).sum().item()
-
-            writer.add_scalar('err_tgt', n_err / len(tgt_test), epoch)
-
-            cls_s.train()
-            cls_t.train()
 
             if epoch % 10 == 0:
                 data = []
@@ -207,6 +195,20 @@ def experiment(exp, affine, num_epochs):
                 grid = make_grid(torch.cat(tuple(data), dim=0),
                                  normalize=True, range=(-1.0, 1.0))
                 writer.add_image('generated', grid, epoch)
+
+            cls_t.eval()
+
+            n_err = 0
+            with torch.no_grad():
+                for tgt_x, tgt_y in tgt_test_loader:
+                    prob_y = F.softmax(cls_t(tgt_x.to(device)), dim=1)
+                    pred_y = torch.max(prob_y, dim=1)[1]
+                    pred_y = pred_y.to(torch.device('cpu'))
+                    n_err += (pred_y != tgt_y).sum().item()
+
+            writer.add_scalar('err_tgt', n_err / len(tgt_test), epoch)
+
+            cls_t.train()
 
             if epoch % 50 == 0:
                 models_dict = {
