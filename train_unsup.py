@@ -29,6 +29,8 @@ def experiment(exp, use_affine, num_epochs):
     device = torch.device('cuda')
 
     src, tgt = load_source_target_datasets(exp)
+    if src.train_X.shape[1] != tgt.train_X.shape[1]:
+        raise RuntimeError('channel mismatch for source / target dataset')
 
     n_ch_t = tgt.train_X.shape[1]  # number of color channels
     res = src.train_X.shape[-1]  # size of image

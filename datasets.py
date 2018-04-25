@@ -15,6 +15,7 @@ from skimage.transform import downscale_local_mean, resize
 import torch
 from PIL import Image
 from preprocess import OriginalAffineTransform
+import pickle
 
 _CONFIG = None
 
@@ -208,6 +209,27 @@ class SynSigns(object):
                                               val_upper)
         self.test_X = ImageArrayUInt8ToFloat32(self.test_X_u8, val_lower,
                                                val_upper)
+
+
+class MNISTM(object):
+    def __init__(self):
+        with open('mnistm_data.pkl', 'rb') as f:
+            data = pickle.load(f)
+
+        img_dtype = np.float32
+        label_dtype = np.int32
+        train_X = data['train']['images'].astype(img_dtype) / 255.0
+        train_y = data['train']['labels'].astype(label_dtype)
+        val_X = data['valid']['images'].astype(img_dtype) / 255.0
+        val_y = data['valid']['labels'].astype(label_dtype)
+        _, C, H, W = train_X.shape
+
+        self.train_X = np.concatenate((train_X, val_X), axis=0)
+        self.train_y = np.concatenate((train_y, val_y), axis=0)
+        self.val_X = np.zeros((0, C, H, W)).astype(img_dtype)
+        self.val_y = np.zeros((0, C, H, W)).astype(label_dtype)
+        self.test_X = data['test']['images'].astype(img_dtype) / 255.0
+        self.test_y = data['test']['labels'].astype(label_dtype)
 
 
 def rgb2grey_tensor(X):
@@ -736,8 +758,53 @@ def load_gtsrb(zero_centre=False, greyscale=False, val=False):
     return d_gts
 
 
+# Dataset loading functions
+def load_mnistm(zero_centre=False, greyscale=False):
+    #
+    #
+    # Load MNISTM
+    #
+    #
+
+    print('Loading MNISTM...')
+    d_mnistm = MNISTM()
+    d_mnistm.train_X = d_mnistm.train_X[:]
+    d_mnistm.val_X = d_mnistm.val_X[:]
+    d_mnistm.test_X = d_mnistm.test_X[:]
+    d_mnistm.train_y = d_mnistm.train_y[:]
+    d_mnistm.val_y = d_mnistm.val_y[:]
+    d_mnistm.test_y = d_mnistm.test_y[:]
+
+    if greyscale:
+        d_mnistm.train_X = rgb2grey_tensor(d_mnistm.train_X)
+        d_mnistm.val_X = rgb2grey_tensor(d_mnistm.val_X)
+        d_mnistm.test_X = rgb2grey_tensor(d_mnistm.test_X)
+
+    if zero_centre:
+        d_mnistm.train_X = d_mnistm.train_X * 2.0 - 1.0
+        d_mnistm.val_X = d_mnistm.val_X * 2.0 - 1.0
+        d_mnistm.test_X = d_mnistm.test_X * 2.0 - 1.0
+
+    print(
+        'MNISTM: train: X.shape={}, y.shape={}, val: X.shape={}, y.shape={}, test: X.shape={}, y.shape={}'.format(
+            d_mnistm.train_X.shape, d_mnistm.train_y.shape,
+            d_mnistm.val_X.shape,
+            d_mnistm.val_y.shape, d_mnistm.test_X.shape,
+            d_mnistm.test_y.shape))
+
+    print('MNISTM: train: X.min={}, X.max={}'.format(
+        d_mnistm.train_X.min(), d_mnistm.train_X.max()))
+
+    d_mnistm.n_classes = 10
+
+    return d_mnistm
+
+
 def load_source_target_datasets(exp):
-    if exp == 'svhn_mnist':
+    if exp == 'mnist_mnistm':
+        d_source = load_mnist(invert=False, zero_centre=False, rgb=False)
+        d_target = load_mnistm(zero_centre=False, greyscale=False)
+    elif exp == 'svhn_mnist':
         d_source = load_svhn(zero_centre=False, greyscale=False)
         d_target = load_mnist(invert=False, zero_centre=False,
                               pad32=True, rgb=False)
