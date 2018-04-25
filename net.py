@@ -3,7 +3,6 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 from torch.nn import functional as F
 from torch.nn import init
 
@@ -18,19 +17,19 @@ def weights_init(init_type='gaussian'):
         if (classname.find('Conv') == 0 or classname.find(
                 'Linear') == 0) and hasattr(m, 'weight'):
             if init_type == 'gaussian':
-                init.normal_(m.weight.data, 0.0, 0.02)
+                init.normal_(m.weight, 0.0, 0.02)
             elif init_type == 'xavier':
-                init.xavier_normal_(m.weight.data, gain=math.sqrt(2))
+                init.xavier_normal_(m.weight, gain=math.sqrt(2))
             elif init_type == 'kaiming':
-                init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+                init.kaiming_normal_(m.weight, a=0, mode='fan_in')
             elif init_type == 'orthogonal':
-                init.orthogonal_(m.weight.data, gain=math.sqrt(2))
+                init.orthogonal_(m.weight, gain=math.sqrt(2))
             elif init_type == 'default':
                 pass
             else:
                 assert 0, "Unsupported initialization: {}".format(init_type)
             if hasattr(m, 'bias') and m.bias is not None:
-                init.constant_(m.bias.data, 0.0)
+                init.constant_(m.bias, 0.0)
 
     return init_fun
 
@@ -90,7 +89,7 @@ class Generator(nn.Module):
         return torch.randn(batchsize, self.n_hidden)  # z_{i} ~ N(0, 1)
 
     def __call__(self, x):
-        z = Variable(self.gen_noise(x.data.shape[0]).cuda())
+        z = self.gen_noise(x.size(0)).to(x.device)
         h = torch.cat(
             (x, F.relu(self.fc(z)).view(-1, 1, self.res, self.res)),
             dim=1)
@@ -98,10 +97,6 @@ class Generator(nn.Module):
         for i in range(1, self.n_resblock + 1):
             h = getattr(self, 'block{:d}'.format(i))(h)
         return F.tanh(self.conv2(h))
-
-
-def add_noise(h, sigma):
-    return h + Variable(sigma * torch.randn(*h.shape).cuda())
 
 
 class DisBlock(nn.Module):
