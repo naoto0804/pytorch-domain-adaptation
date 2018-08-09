@@ -6,10 +6,10 @@ from torch.nn import functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-from datasets import DADataset
-from datasets import load_source_target_datasets
-from util import save_model
+from util.datasets import DADataset
+from util.datasets import load_source_target_datasets
 from util.io import get_config
+from util.io import save_model
 from util.net import LenetClassifier
 from util.net import weights_init
 from util.opt import exp_list

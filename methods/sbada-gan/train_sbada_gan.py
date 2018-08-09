@@ -10,9 +10,9 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
-from datasets import DADataset
-from datasets import load_source_target_datasets
-from loss import GANLoss
+from util.datasets import DADataset
+from util.datasets import load_source_target_datasets
+from util.loss import GANLoss
 from util.net import Discriminator
 from util.net import Generator
 from util.net import LenetClassifier
@@ -20,9 +20,9 @@ from util.net import weights_init
 from util.opt import exp_list
 from util.opt import params
 from util.preprocess import get_composed_transforms
-from util import ImagePool
-from util import InfiniteSampler
-from util import save_models_dict
+from util.image_pool import ImagePool
+from util.sampler import InfiniteSampler
+from util.io import save_models_dict
 
 torch.backends.cudnn.benchmark = True
 
