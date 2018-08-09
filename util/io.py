@@ -1,4 +1,5 @@
 import torch
+import yaml
 
 cpu_device = torch.device('cpu')
 
@@ -32,3 +33,8 @@ def load_models_dict(models_dict, filename):
     result_dict = torch.load(filename)
     for key in models_dict.keys():
         models_dict[key].load_state_dict(result_dict[key])
+
+
+def get_config(config):
+    with open(config, 'r') as stream:
+        return yaml.load(stream)

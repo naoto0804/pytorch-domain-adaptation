@@ -5,9 +5,9 @@ from torch.utils.data import DataLoader
 
 from datasets import DADataset
 from datasets import load_source_target_datasets
-from net import LenetClassifier, Generator
-from opt import exp_list, params
-from preprocess import get_composed_transforms
+from util.net import LenetClassifier, Generator
+from util.opt import exp_list, params
+from util.preprocess import get_composed_transforms
 from util import load_models_dict
 
 torch.backends.cudnn.benchmark = True

@@ -15,7 +15,7 @@ from batchup.datasets import mnist, fashion_mnist, cifar10, svhn, stl, usps
 from skimage.transform import downscale_local_mean, resize
 import torch
 from PIL import Image
-from preprocess import OriginalAffineTransform
+from util.preprocess import OriginalAffineTransform
 import pickle
 
 _CONFIG = None
