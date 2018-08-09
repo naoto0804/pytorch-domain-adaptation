@@ -3,12 +3,11 @@ import torch.cuda
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
-from util.datasets import DADataset
-from util.datasets import load_source_target_datasets
+from util.datasets import DADataset, load_source_target_datasets
+from util.io import load_models_dict, get_config
 from util.net import LenetClassifier, Generator
-from util.opt import exp_list, params
+from util.opt import exp_list
 from util.preprocess import get_composed_transforms
-from util import load_models_dict
 
 torch.backends.cudnn.benchmark = True
 
@@ -18,6 +17,9 @@ torch.backends.cudnn.benchmark = True
 @click.option('--snapshot', type=str, required=True)
 @click.option('--mix_ratio', type=float, default=1.0)
 def experiment(exp, snapshot, mix_ratio):
+    config = get_config('config.yaml')
+    batch_size = int(config['batch_size'])
+
     device = torch.device('cuda')
     src, tgt = load_source_target_datasets(exp)
     n_ch_s = src.train_X.shape[1]  # number of color channels
@@ -28,7 +30,7 @@ def experiment(exp, snapshot, mix_ratio):
     cls_s = LenetClassifier(n_classes, n_ch_s, res).to(device)
     cls_t = LenetClassifier(n_classes, n_ch_t, res).to(device)
     add_params = {'res': res, 'n_c_in': n_ch_t, 'n_c_out': n_ch_s}
-    gen_t_s = Generator(**{**params['gen_init'], **add_params}).to(device)
+    gen_t_s = Generator(**{**config['gen_init'], **add_params}).to(device)
 
     models_dict = {'cls_s': cls_s, 'cls_t': cls_t, 'gen_t_s': gen_t_s}
     load_models_dict(models_dict, snapshot)
@@ -36,7 +38,7 @@ def experiment(exp, snapshot, mix_ratio):
     test_tfs = get_composed_transforms(train=False, hflip=False)
     tgt_test = DADataset(tgt.test_X, tgt.test_y, test_tfs, False)
     tgt_test_loader = DataLoader(
-        tgt_test, batch_size=params['batch_size'] * 4, num_workers=4)
+        tgt_test, batch_size=batch_size * 4, num_workers=4)
 
     print('Testing...')
     cls_t.eval()

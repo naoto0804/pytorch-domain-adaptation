@@ -96,7 +96,7 @@ class Generator(nn.Module):
         h = F.relu(self.bn1(self.conv1(h)))
         for i in range(1, self.n_resblock + 1):
             h = getattr(self, 'block{:d}'.format(i))(h)
-        return F.tanh(self.conv2(h))
+        return torch.tanh(self.conv2(h))
 
 
 class DisBlock(nn.Module):

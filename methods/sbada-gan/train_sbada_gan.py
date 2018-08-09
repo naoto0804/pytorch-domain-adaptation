@@ -1,3 +1,4 @@
+import sys
 from itertools import chain
 
 import click
@@ -10,19 +11,16 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
-from util.datasets import DADataset
-from util.datasets import load_source_target_datasets
+sys.path.append('../..')
+
+from util.datasets import DADataset, load_source_target_datasets
 from util.loss import GANLoss
-from util.net import Discriminator
-from util.net import Generator
-from util.net import LenetClassifier
-from util.net import weights_init
+from util.net import weights_init, Discriminator, Generator, LenetClassifier
 from util.opt import exp_list
-from util.opt import params
 from util.preprocess import get_composed_transforms
 from util.image_pool import ImagePool
 from util.sampler import InfiniteSampler
-from util.io import save_models_dict
+from util.io import save_models_dict, get_config
 
 torch.backends.cudnn.benchmark = True
 
@@ -37,13 +35,18 @@ def experiment(exp, affine, num_epochs):
     os.makedirs(log_dir, exist_ok=True)
     device = torch.device('cuda')
 
-    alpha = params['weight']['alpha']
-    beta = params['weight']['beta']
-    gamma = params['weight']['gamma']
-    mu = params['weight']['mu']
-    new = params['weight']['new']
+    config = get_config('config.yaml')
+
+    alpha = float(config['weight']['alpha'])
+    beta = float(config['weight']['beta'])
+    gamma = float(config['weight']['gamma'])
+    mu = float(config['weight']['mu'])
+    new = float(config['weight']['new'])
     eta = 0.0
-    batch_size = params['batch_size']
+    batch_size = int(config['batch_size'])
+    pool_size = int(config['pool_size'])
+    lr = float(config['lr'])
+    weight_decay = float(config['weight_decay'])
 
     src, tgt = load_source_target_datasets(exp)
 
@@ -74,20 +77,19 @@ def experiment(exp, affine, num_epochs):
 
     gen_s_t_params = {'res': res, 'n_c_in': n_ch_s, 'n_c_out': n_ch_t}
     gen_t_s_params = {'res': res, 'n_c_in': n_ch_t, 'n_c_out': n_ch_s}
-    gen_s_t = Generator(**{**params['gen_init'], **gen_s_t_params}).to(device)
-    gen_t_s = Generator(**{**params['gen_init'], **gen_t_s_params}).to(device)
+    gen_s_t = Generator(**{**config['gen_init'], **gen_s_t_params}).to(device)
+    gen_t_s = Generator(**{**config['gen_init'], **gen_t_s_params}).to(device)
     gen_s_t.apply(weights_init_gaussian)
     gen_t_s.apply(weights_init_gaussian)
 
     dis_s_params = {'res': res, 'n_c_in': n_ch_s}
     dis_t_params = {'res': res, 'n_c_in': n_ch_t}
-    dis_s = Discriminator(**{**params['dis_init'], **dis_s_params}).to(device)
-    dis_t = Discriminator(**{**params['dis_init'], **dis_t_params}).to(device)
+    dis_s = Discriminator(**{**config['dis_init'], **dis_s_params}).to(device)
+    dis_t = Discriminator(**{**config['dis_init'], **dis_t_params}).to(device)
     dis_s.apply(weights_init_gaussian)
     dis_t.apply(weights_init_gaussian)
 
-    config = {'lr': params['base_lr'], 'weight_decay': params['weight_decay'],
-              'betas': params['betas']}
+    config = {'lr': lr, 'weight_decay': weight_decay, 'betas': (0.5, 0.999)}
     opt_gen = Adam(
         chain(gen_s_t.parameters(), gen_t_s.parameters(),
               cls_s.parameters(), cls_t.parameters()), **config)
@@ -96,8 +98,8 @@ def experiment(exp, affine, num_epochs):
     calc_ls = GANLoss(device, use_lsgan=True)
     calc_ce = F.cross_entropy
 
-    fake_src_x_pool = ImagePool(params['pool_size'] * batch_size)
-    fake_tgt_x_pool = ImagePool(params['pool_size'] * batch_size)
+    fake_src_x_pool = ImagePool(pool_size * batch_size)
+    fake_tgt_x_pool = ImagePool(pool_size * batch_size)
 
     src_train_iter = iter(DataLoader(
         src_train, batch_size=batch_size, num_workers=4,
@@ -121,7 +123,7 @@ def experiment(exp, affine, num_epochs):
         tgt_x = tgt_x.to(device)
 
         if niter >= num_epochs * 0.75 * iter_per_epoch:
-            eta = params['weight']['eta']
+            eta = config['weight']['eta']
 
         fake_tgt_x = gen_s_t(src_x)
         fake_back_src_x = gen_t_s(fake_tgt_x)
