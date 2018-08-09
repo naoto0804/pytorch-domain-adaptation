@@ -1,7 +1,7 @@
-import os
 from itertools import chain
 
 import click
+import os
 import torch
 import torch.cuda
 from tensorboardX import SummaryWriter
@@ -88,8 +88,9 @@ def experiment(exp, affine, num_epochs):
 
     config = {'lr': params['base_lr'], 'weight_decay': params['weight_decay'],
               'betas': params['betas']}
-    opt_cls = Adam(chain(cls_s.parameters(), cls_t.parameters()), **config)
-    opt_gen = Adam(chain(gen_s_t.parameters(), gen_t_s.parameters()), **config)
+    opt_gen = Adam(
+        chain(gen_s_t.parameters(), gen_t_s.parameters(),
+              cls_s.parameters(), cls_t.parameters()), **config)
     opt_dis = Adam(chain(dis_s.parameters(), dis_t.parameters()), **config)
 
     calc_ls = GANLoss(device, use_lsgan=True)
@@ -131,6 +132,7 @@ def experiment(exp, affine, num_epochs):
 
         # eq2
         loss_gen = beta * calc_ce(cls_t(fake_tgt_x), src_y)
+        loss_gen += mu * calc_ce(cls_s(src_x), src_y)
 
         # eq3
         loss_gen += gamma * calc_ls(dis_s(fake_src_x), True)
@@ -147,10 +149,6 @@ def experiment(exp, affine, num_epochs):
         fake_src_x = fake_src_x.detach()
         fake_back_src_x = fake_back_src_x.detach()
 
-        # eq2
-        loss_cls_s = mu * calc_ce(cls_s(src_x), src_y)  # no feedback
-        loss_cls_t = beta * calc_ce(cls_t(fake_tgt_x), src_y)
-
         # eq3
         loss_dis_s = gamma * calc_ls(
             dis_s(fake_src_x_pool.query(fake_src_x)), False)
@@ -159,17 +157,9 @@ def experiment(exp, affine, num_epochs):
             dis_t(fake_tgt_x_pool.query(fake_tgt_x)), False)
         loss_dis_t += alpha * calc_ls(dis_t(tgt_x), True)
 
-        # eq5
-        loss_cls_s += eta * calc_ce(cls_s(fake_src_x), fake_src_pseudo_y)
-
-        # eq6
-        loss_cls_s += new * calc_ce(cls_s(fake_back_src_x), src_y)
-
-        loss_cls = loss_cls_s + loss_cls_t
         loss_dis = loss_dis_s + loss_dis_t
 
-        for opt, loss in zip([opt_dis, opt_cls, opt_gen],
-                             [loss_dis, loss_cls, loss_gen]):
+        for opt, loss in zip([opt_dis, opt_gen], [loss_dis, loss_gen]):
             opt.zero_grad()
             loss.backward(retain_graph=True)
             opt.step()
@@ -177,8 +167,6 @@ def experiment(exp, affine, num_epochs):
         if niter % 100 == 0 and niter > 0:
             writer.add_scalar('dis/src', loss_dis_s.item(), niter)
             writer.add_scalar('dis/tgt', loss_dis_t.item(), niter)
-            writer.add_scalar('cls/src', loss_cls_s.item(), niter)
-            writer.add_scalar('cls/tgt', loss_cls_t.item(), niter)
             writer.add_scalar('gen', loss_gen.item(), niter)
 
         if niter % iter_per_epoch == 0:
