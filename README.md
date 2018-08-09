@@ -1,4 +1,4 @@
-# pytorch-SBADA-GAN
+# pytorch-domain-adaptation
 
 This is an unofficial pytorch implementation of algorithms for domain adaptation.
 
