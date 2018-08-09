@@ -1,5 +1,6 @@
-import os
 import sys
+
+import os
 
 if sys.version_info[0] == 2:
     from ConfigParser import RawConfigParser
@@ -758,53 +759,8 @@ def load_gtsrb(zero_centre=False, greyscale=False, val=False):
     return d_gts
 
 
-# Dataset loading functions
-def load_mnistm(zero_centre=False, greyscale=False):
-    #
-    #
-    # Load MNISTM
-    #
-    #
-
-    print('Loading MNISTM...')
-    d_mnistm = MNISTM()
-    d_mnistm.train_X = d_mnistm.train_X[:]
-    d_mnistm.val_X = d_mnistm.val_X[:]
-    d_mnistm.test_X = d_mnistm.test_X[:]
-    d_mnistm.train_y = d_mnistm.train_y[:]
-    d_mnistm.val_y = d_mnistm.val_y[:]
-    d_mnistm.test_y = d_mnistm.test_y[:]
-
-    if greyscale:
-        d_mnistm.train_X = rgb2grey_tensor(d_mnistm.train_X)
-        d_mnistm.val_X = rgb2grey_tensor(d_mnistm.val_X)
-        d_mnistm.test_X = rgb2grey_tensor(d_mnistm.test_X)
-
-    if zero_centre:
-        d_mnistm.train_X = d_mnistm.train_X * 2.0 - 1.0
-        d_mnistm.val_X = d_mnistm.val_X * 2.0 - 1.0
-        d_mnistm.test_X = d_mnistm.test_X * 2.0 - 1.0
-
-    print(
-        'MNISTM: train: X.shape={}, y.shape={}, val: X.shape={}, y.shape={}, test: X.shape={}, y.shape={}'.format(
-            d_mnistm.train_X.shape, d_mnistm.train_y.shape,
-            d_mnistm.val_X.shape,
-            d_mnistm.val_y.shape, d_mnistm.test_X.shape,
-            d_mnistm.test_y.shape))
-
-    print('MNISTM: train: X.min={}, X.max={}'.format(
-        d_mnistm.train_X.min(), d_mnistm.train_X.max()))
-
-    d_mnistm.n_classes = 10
-
-    return d_mnistm
-
-
 def load_source_target_datasets(exp):
-    if exp == 'mnist_mnistm':
-        d_source = load_mnist(invert=False, zero_centre=False, rgb=False)
-        d_target = load_mnistm(zero_centre=False, greyscale=False)
-    elif exp == 'svhn_mnist':
+    if exp == 'svhn_mnist':
         d_source = load_svhn(zero_centre=False, greyscale=False)
         d_target = load_mnist(invert=False, zero_centre=False,
                               pad32=True, rgb=False)
