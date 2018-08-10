@@ -1,0 +1,11 @@
+batch_size: 64
+lr: 1e-4
+weight_decay: 1e-5
+pool_size: 50
+gen:
+  ngf: 16
+  which_model_netG: resnet_6blocks
+  norm: instance
+dis:
+  ndf: 16
+  which_model_netD: basic

@@ -13,7 +13,7 @@ from torchvision.utils import make_grid
 
 sys.path.append('../..')
 
-from util.datasets import DADataset, load_source_target_datasets
+from util.dataset import DADataset, load_source_target_datasets
 from util.loss import GANLoss
 from util.net import weights_init, Discriminator, Generator, LenetClassifier
 from util.opt import exp_list

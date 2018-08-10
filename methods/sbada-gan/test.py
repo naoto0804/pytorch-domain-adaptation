@@ -3,7 +3,7 @@ import torch.cuda
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
-from util.datasets import DADataset, load_source_target_datasets
+from util.dataset import DADataset, load_source_target_datasets
 from util.io import load_models_dict, get_config
 from util.net import LenetClassifier, Generator
 from util.opt import exp_list

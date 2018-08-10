@@ -5,23 +5,16 @@ This is an unofficial pytorch implementation of a paper, From source to target a
 Please note that this is an ongoing project and I cannot fully reproduce the results currently.
 
 
-## Usage
-
-These examples are for the MNIST to USPS experiment.
-
-### Train `Source Only` Model
-```
-CUDA_VISIBLE_DEVICES=<gpu_id> python train_unsup.py --exp mnist_usps
-```
-
-### Train `Target Only` Model
-```
-CUDA_VISIBLE_DEVICES=<gpu_id> python train_sup.py --exp mnist_usps
-```
-
 ### Train SBADA-GAN Model
 ```
-CUDA_VISIBLE_DEVICES=<gpu_id> python train_sbada_gan.py --exp mnist_usps
+CUDA_VISIBLE_DEVICES=<gpu_id> python train.py --exp mnist_usps
+```
+
+### Test SBADA-GAN Model
+`--mix_ratio` controls the ratio of mixing predictions from `C_{s}` and `C_{t}`.
+
+```
+CUDA_VISIBLE_DEVICES=<gpu_id> python train.py --exp mnist_usps --mix_ratio 0.5
 ```
 
 ## Results
