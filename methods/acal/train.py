@@ -23,7 +23,6 @@ from util.evaluate import evaluate_classifier
 from util.image_pool import ImagePool
 from util.io import load_model, save_model, save_models_dict, get_config
 from util.loss import GANLoss
-from util.net import weights_init
 from util.sampler import InfiniteSampler
 from util.transform import get_composed_transforms
 
@@ -32,7 +31,7 @@ torch.backends.cudnn.benchmark = True
 
 @click.command()
 @click.option('--exp', type=click.Choice(exp_list), required=True)
-@click.option('--num_epochs', type=int, default=50)
+@click.option('--num_epochs', type=int, default=200)
 @click.option('--pretrain', is_flag=True)
 def experiment(exp, num_epochs, pretrain):
     config = get_config('config.yaml')
@@ -42,7 +41,7 @@ def experiment(exp, num_epochs, pretrain):
     weight_decay = float(config['weight_decay'])
 
     writer = SummaryWriter()
-    log_dir = '../log/{:s}/acal'.format(exp)
+    log_dir = 'log/{:s}/acal'.format(exp)
     os.makedirs(log_dir, exist_ok=True)
     device = torch.device('cuda')
 
@@ -65,16 +64,11 @@ def experiment(exp, num_epochs, pretrain):
     n_sample = max(len(src_train), len(tgt_train))
     iter_per_epoch = n_sample // batch_size + 1
 
-    weights_init_kaiming = weights_init('kaiming')
-
     cls_s = Classifier(n_class, n_ch_s).to(device)
     cls_t = Classifier(n_class, n_ch_t).to(device)
 
-    if pretrain:
-        cls_s.apply(weights_init_kaiming)
-    else:
+    if not pretrain:
         load_model(cls_s, '{:s}/pretrain_cls_s.tar'.format(log_dir))
-    cls_t.apply(weights_init_kaiming)
 
     gen_s_t_params = {'input_nc': n_ch_s, 'output_nc': n_ch_t}
     gen_t_s_params = {'input_nc': n_ch_t, 'output_nc': n_ch_s}
@@ -123,9 +117,11 @@ def experiment(exp, num_epochs, pretrain):
 
             if niter % iter_per_epoch == 0:
                 epoch = niter // iter_per_epoch
-                # n_err = evaluate_classifier(cls_s, src_test_loader, device)
                 n_err = evaluate_classifier(cls_s, tgt_test_loader, device)
                 print(epoch, n_err / len(tgt_test))
+
+                # n_err = evaluate_classifier(cls_s, src_test_loader, device)
+                # print(epoch, n_err / len(src_test))
 
                 if epoch >= num_epochs:
                     save_model(cls_s,
