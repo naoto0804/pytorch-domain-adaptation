@@ -3,10 +3,10 @@ from itertools import chain
 
 import click
 import os
+import shutil
 import torch
 import torch.cuda
 from tensorboardX import SummaryWriter
-from torch.nn import functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
@@ -33,16 +33,26 @@ torch.backends.cudnn.benchmark = True
 @click.option('--exp', type=click.Choice(exp_list), required=True)
 @click.option('--num_epochs', type=int, default=200)
 @click.option('--pretrain', is_flag=True)
-def experiment(exp, num_epochs, pretrain):
+@click.option('--consistency', type=str, default='augmented')
+# @click.option('--identifier', type=str, default='default')
+# def experiment(exp, num_epochs, pretrain, identifier):
+# log_dir = 'log/{:s}/{:s}'.format(exp, identifier)
+# snapshot_dir = 'snapshot/{:s}/{:s}'.format(exp, identifier)
+def experiment(exp, num_epochs, pretrain, consistency):
     config = get_config('config.yaml')
+    identifier = '{:s}_ndf{:d}_ngf{:d}'.format(
+        consistency, config['dis']['ndf'], config['gen']['ngf'])
+    log_dir = 'log/{:s}/{:s}'.format(exp, identifier)
+    snapshot_dir = 'snapshot/{:s}/{:s}'.format(exp, identifier)
+    writer = SummaryWriter(log_dir=log_dir)
+    os.makedirs(snapshot_dir, exist_ok=True)
+
+    shutil.copy('config.yaml', '{:s}/{:s}'.format(snapshot_dir, 'config.yaml'))
     batch_size = int(config['batch_size'])
     pool_size = int(config['pool_size'])
     lr = float(config['lr'])
     weight_decay = float(config['weight_decay'])
 
-    writer = SummaryWriter()
-    log_dir = 'log/{:s}/acal'.format(exp)
-    os.makedirs(log_dir, exist_ok=True)
     device = torch.device('cuda')
 
     src, tgt = load_source_target_datasets(exp)
@@ -68,7 +78,7 @@ def experiment(exp, num_epochs, pretrain):
     cls_t = Classifier(n_class, n_ch_t).to(device)
 
     if not pretrain:
-        load_model(cls_s, '{:s}/pretrain_cls_s.tar'.format(log_dir))
+        load_model(cls_s, 'snapshot/{:s}/pretrain_cls_s.tar'.format(exp))
 
     gen_s_t_params = {'input_nc': n_ch_s, 'output_nc': n_ch_t}
     gen_t_s_params = {'input_nc': n_ch_t, 'output_nc': n_ch_s}
@@ -78,13 +88,14 @@ def experiment(exp, num_epochs, pretrain):
     dis_s = define_D(**{**config['dis'], 'input_nc': n_ch_s}).to(device)
     dis_t = define_D(**{**config['dis'], 'input_nc': n_ch_t}).to(device)
 
-    config = {'lr': lr, 'weight_decay': weight_decay, 'betas': (0.5, 0.99)}
+    opt_config = {'lr': lr, 'weight_decay': weight_decay, 'betas': (0.5, 0.99)}
     opt_gen = Adam(chain(gen_s_t.parameters(), gen_t_s.parameters(), \
-                         cls_s.parameters(), cls_t.parameters()), **config)
-    opt_dis = Adam(chain(dis_s.parameters(), dis_t.parameters()), **config)
+                         cls_s.parameters(), cls_t.parameters()), **opt_config)
+    opt_dis = Adam(chain(dis_s.parameters(), dis_t.parameters()), **opt_config)
 
-    calc_ls = GANLoss(device, use_lsgan=True)
-    calc_ce = F.cross_entropy
+    calc_ls = GANLoss(device, use_lsgan=True).to(device)
+    calc_ce = torch.nn.CrossEntropyLoss().to(device)
+    calc_l1 = torch.nn.L1Loss().to(device)
 
     fake_src_x_pool = ImagePool(pool_size * batch_size)
     fake_tgt_x_pool = ImagePool(pool_size * batch_size)
@@ -125,7 +136,7 @@ def experiment(exp, num_epochs, pretrain):
 
                 if epoch >= num_epochs:
                     save_model(cls_s,
-                               '{:s}/pretrain_cls_s.tar'.format(log_dir))
+                               '{:s}/pretrain_cls_s.tar'.format(snapshot_dir))
                     break
         exit()
 
@@ -163,11 +174,26 @@ def experiment(exp, num_epochs, pretrain):
         loss_gen_cls = loss_gen_cls_s + loss_gen_cls_t
 
         # augmented cycle consistency
-        loss_gen_aug_s = calc_ce(cls_s(fake_src_x), tgt_y)
-        loss_gen_aug_s += calc_ce(cls_s(fake_back_src_x), src_y)
-        loss_gen_aug_t = calc_ce(cls_t(fake_tgt_x), src_y)
-        loss_gen_aug_t += calc_ce(cls_t(fake_back_tgt_x), tgt_y)
-        loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
+        if consistency == 'augmented':
+            loss_gen_aug_s = calc_ce(cls_s(fake_src_x), tgt_y)
+            loss_gen_aug_s += calc_ce(cls_s(fake_back_src_x), src_y)
+            loss_gen_aug_t = calc_ce(cls_t(fake_tgt_x), src_y)
+            loss_gen_aug_t += calc_ce(cls_t(fake_back_tgt_x), tgt_y)
+            loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
+        elif consistency == 'relaxed':
+            loss_gen_aug_s = calc_ce(cls_s(fake_back_src_x), src_y)
+            loss_gen_aug_t = calc_ce(cls_t(fake_back_tgt_x), tgt_y)
+            loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
+        elif consistency == 'simple':
+            loss_gen_aug_s = calc_ce(cls_s(fake_src_x), tgt_y)
+            loss_gen_aug_t = calc_ce(cls_t(fake_tgt_x), src_y)
+            loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
+        elif consistency == 'cycle':
+            loss_gen_aug_s = calc_l1(fake_back_src_x, src_x)
+            loss_gen_aug_t = calc_l1(fake_back_tgt_x, tgt_x)
+            loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
+        else:
+            raise NotImplementedError
 
         # deceive discriminator
         loss_gen_adv_s = calc_ls(dis_s(fake_src_x), True)
@@ -216,7 +242,7 @@ def experiment(exp, num_epochs, pretrain):
                 models_dict = {
                     'cls_s': cls_s, 'cls_t': cls_t, 'dis_s': dis_s,
                     'dis_t': dis_t, 'gen_s_t': gen_s_t, 'gen_t_s': gen_t_s}
-                filename = '{:s}/epoch{:d}.tar'.format(log_dir, epoch)
+                filename = '{:s}/epoch{:d}.tar'.format(snapshot_dir, epoch)
                 save_models_dict(models_dict, filename)
 
             if epoch >= num_epochs:
