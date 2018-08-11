@@ -4,3 +4,4 @@ log
 runs
 *.txt
 *.tar
+methods/acal/snapshot/*

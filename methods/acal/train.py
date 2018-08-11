@@ -32,19 +32,14 @@ torch.backends.cudnn.benchmark = True
 @click.command()
 @click.option('--exp', type=click.Choice(exp_list), required=True)
 @click.option('--num_epochs', type=int, default=200)
+@click.option('--num_labeled', type=int, default=1000, help='labels in target')
 @click.option('--pretrain', is_flag=True)
 @click.option('--consistency', type=str, default='augmented')
-# @click.option('--identifier', type=str, default='default')
-# def experiment(exp, num_epochs, pretrain, identifier):
-# log_dir = 'log/{:s}/{:s}'.format(exp, identifier)
-# snapshot_dir = 'snapshot/{:s}/{:s}'.format(exp, identifier)
-def experiment(exp, num_epochs, pretrain, consistency):
+def experiment(exp, num_epochs, num_labeled, pretrain, consistency):
     config = get_config('config.yaml')
     identifier = '{:s}_ndf{:d}_ngf{:d}'.format(
         consistency, config['dis']['ndf'], config['gen']['ngf'])
-    log_dir = 'log/{:s}/{:s}'.format(exp, identifier)
     snapshot_dir = 'snapshot/{:s}/{:s}'.format(exp, identifier)
-    writer = SummaryWriter(log_dir=log_dir)
     os.makedirs(snapshot_dir, exist_ok=True)
 
     shutil.copy('config.yaml', '{:s}/{:s}'.format(snapshot_dir, 'config.yaml'))
@@ -67,7 +62,7 @@ def experiment(exp, num_epochs, pretrain, consistency):
     src_train = DADataset(src.train_X, src.train_y, train_tfs)
     src_test = DADataset(src.test_X, src.test_y, train_tfs)
     tgt_train = DADataset(tgt.train_X, tgt.train_y, train_tfs)
-    tgt_train = SubsetDataset(tgt_train, range(1000))  # fix indices
+    tgt_train = SubsetDataset(tgt_train, range(num_labeled))
     tgt_test = DADataset(tgt.test_X, tgt.test_y, test_tfs)
     del src, tgt
 
@@ -120,8 +115,9 @@ def experiment(exp, num_epochs, pretrain, consistency):
     if pretrain:
         while True:
             niter += 1
-            src_x, src_y = next(src_train_iter)
-            loss = calc_ce(cls_s(src_x.to(device)), src_y.to(device))
+            x, y = next(src_train_iter)
+            # x, y = next(tgt_train_iter)
+            loss = calc_ce(cls_s(x.to(device)), y.to(device))
             opt_gen.zero_grad()
             loss.backward()
             opt_gen.step()
@@ -140,6 +136,7 @@ def experiment(exp, num_epochs, pretrain, consistency):
                     break
         exit()
 
+    writer = SummaryWriter(log_dir='log/{:s}/{:s}'.format(exp, identifier))
     while True:
         niter += 1
         src_x, src_y = next(src_train_iter)
