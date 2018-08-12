@@ -47,6 +47,8 @@ def experiment(exp, num_epochs, num_labeled, pretrain, consistency):
     pool_size = int(config['pool_size'])
     lr = float(config['lr'])
     weight_decay = float(config['weight_decay'])
+    ncf = int(config['cls']['ncf'])
+    pretrained_model = 'snapshot/{:s}/cls_s_fc_{:d}.tar'.format(exp, ncf)
 
     device = torch.device('cuda')
 
@@ -69,11 +71,11 @@ def experiment(exp, num_epochs, num_labeled, pretrain, consistency):
     n_sample = max(len(src_train), len(tgt_train))
     iter_per_epoch = n_sample // batch_size + 1
 
-    cls_s = Classifier(n_class, n_ch_s).to(device)
-    cls_t = Classifier(n_class, n_ch_t).to(device)
+    cls_s = Classifier(n_class, n_ch_s, ncf).to(device)
+    cls_t = Classifier(n_class, n_ch_t, ncf).to(device)
 
     if not pretrain:
-        load_model(cls_s, 'snapshot/{:s}/pretrain_cls_s.tar'.format(exp))
+        load_model(cls_s, pretrained_model)
 
     gen_s_t_params = {'input_nc': n_ch_s, 'output_nc': n_ch_t}
     gen_t_s_params = {'input_nc': n_ch_t, 'output_nc': n_ch_s}
@@ -131,8 +133,7 @@ def experiment(exp, num_epochs, num_labeled, pretrain, consistency):
                 # print(epoch, n_err / len(src_test))
 
                 if epoch >= num_epochs:
-                    save_model(cls_s,
-                               '{:s}/pretrain_cls_s.tar'.format(snapshot_dir))
+                    save_model(cls_s, pretrained_model)
                     break
         exit()
 

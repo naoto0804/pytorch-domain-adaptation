@@ -9,3 +9,5 @@ gen:
 dis:
   ndf: 64
   which_model_netD: basic
+cls:
+  ncf: 50

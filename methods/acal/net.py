@@ -3,14 +3,14 @@ from torch.nn import functional as F
 
 
 class Classifier(nn.Module):
-    def __init__(self, n_class, n_ch):
+    def __init__(self, n_class, n_ch, ncf):
         super(Classifier, self).__init__()
         self.res = 32
         self.conv1 = nn.Conv2d(n_ch, 20, 5)
         self.conv2 = nn.Conv2d(20, 50, 5)
         self.fc_input_len = (((self.res - 4) // 2 - 4) // 2) ** 2 * 50
-        self.fc1 = nn.Linear(self.fc_input_len, 500)
-        self.fc2 = nn.Linear(500, n_class)
+        self.fc1 = nn.Linear(self.fc_input_len, ncf)
+        self.fc2 = nn.Linear(ncf, n_class)
         self.drop = nn.Dropout()
 
     def __call__(self, x):
