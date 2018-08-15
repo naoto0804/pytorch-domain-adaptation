@@ -11,3 +11,5 @@ dis:
   which_model_netD: basic
 cls:
   ncf: 50
+weight:
+  aug: 0.1

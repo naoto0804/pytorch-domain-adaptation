@@ -37,8 +37,9 @@ torch.backends.cudnn.benchmark = True
 @click.option('--consistency', type=str, default='augmented')
 def experiment(exp, num_epochs, num_labeled, pretrain, consistency):
     config = get_config('config.yaml')
-    identifier = '{:s}_ndf{:d}_ngf{:d}'.format(
-        consistency, config['dis']['ndf'], config['gen']['ngf'])
+    identifier = '{:s}_ndf{:d}_ngf{:d}_waug{:.1f}'.format(
+        consistency, config['dis']['ndf'], config['gen']['ngf'],
+        config['weight']['aug'])
     snapshot_dir = 'snapshot/{:s}/{:s}'.format(exp, identifier)
     os.makedirs(snapshot_dir, exist_ok=True)
 
@@ -73,6 +74,8 @@ def experiment(exp, num_epochs, num_labeled, pretrain, consistency):
 
     cls_s = Classifier(n_class, n_ch_s, ncf).to(device)
     cls_t = Classifier(n_class, n_ch_t, ncf).to(device)
+    # cls_s = Classifier().to(device)
+    # cls_t = Classifier().to(device)
 
     if not pretrain:
         load_model(cls_s, pretrained_model)
@@ -118,7 +121,6 @@ def experiment(exp, num_epochs, num_labeled, pretrain, consistency):
         while True:
             niter += 1
             x, y = next(src_train_iter)
-            # x, y = next(tgt_train_iter)
             loss = calc_ce(cls_s(x.to(device)), y.to(device))
             opt_gen.zero_grad()
             loss.backward()
@@ -177,21 +179,20 @@ def experiment(exp, num_epochs, num_labeled, pretrain, consistency):
             loss_gen_aug_s += calc_ce(cls_s(fake_back_src_x), src_y)
             loss_gen_aug_t = calc_ce(cls_t(fake_tgt_x), src_y)
             loss_gen_aug_t += calc_ce(cls_t(fake_back_tgt_x), tgt_y)
-            loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
         elif consistency == 'relaxed':
             loss_gen_aug_s = calc_ce(cls_s(fake_back_src_x), src_y)
             loss_gen_aug_t = calc_ce(cls_t(fake_back_tgt_x), tgt_y)
-            loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
         elif consistency == 'simple':
             loss_gen_aug_s = calc_ce(cls_s(fake_src_x), tgt_y)
             loss_gen_aug_t = calc_ce(cls_t(fake_tgt_x), src_y)
-            loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
         elif consistency == 'cycle':
             loss_gen_aug_s = calc_l1(fake_back_src_x, src_x)
             loss_gen_aug_t = calc_l1(fake_back_tgt_x, tgt_x)
-            loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
         else:
             raise NotImplementedError
+        loss_gen_aug_s *= config['weight']['aug']
+        loss_gen_aug_t *= config['weight']['aug']
+        loss_gen_aug = loss_gen_aug_s + loss_gen_aug_t
 
         # deceive discriminator
         loss_gen_adv_s = calc_ls(dis_s(fake_src_x), True)
